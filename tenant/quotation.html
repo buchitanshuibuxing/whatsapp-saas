@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>外贸报价单生成器</title>
+<style>
+  :root {
+    --primary: #1a56db;
+    --primary-light: #e8effc;
+    --accent: #059669;
+    --danger: #dc2626;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--gray-100);
+    color: var(--gray-900);
+    line-height: 1.6;
+  }
+
+  /* ========== Header ========== */
+  .app-header {
+    background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%);
+    color: white;
+    padding: 20px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
+  }
+  .app-header .container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .app-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .app-header h1 .icon { font-size: 28px; }
+  .header-actions { display: flex; gap: 10px; }
+
+  /* ========== Layout ========== */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .main-layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 24px;
+    padding: 24px 0;
+  }
+  @media (max-width: 900px) {
+    .main-layout { grid-template-columns: 1fr; }
+  }
+
+  /* ========== Cards ========== */
+  .card {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-200);
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--gray-200);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--gray-50);
+  }
+  .card-header h2 {
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--gray-700);
+  }
+  .card-body { padding: 20px; }
+
+  /* ========== Form Elements ========== */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group.full { grid-column: 1 / -1; }
+  .form-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    padding: 8px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background: white;
+    font-family: inherit;
+  }
+  .form-group input:focus,
+  .form-group select:focus,
+  .form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(26,86,219,0.1);
+  }
+  .form-group textarea { resize: vertical; min-height: 60px; }
+
+  /* ========== Buttons ========== */
+  .btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: #1e40af; }
+  .btn-accent { background: var(--accent); color: white; }
+  .btn-accent:hover { background: #047857; }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-outline {
+    background: white;
+    color: var(--gray-700);
+    border: 1px solid var(--gray-300);
+  }
+  .btn-outline:hover { background: var(--gray-50); border-color: var(--gray-400); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-lg { padding: 12px 28px; font-size: 15px; }
+  .btn-icon {
+    width: 32px; height: 32px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px; border: 1px solid var(--gray-300);
+    background: white; cursor: pointer; color: var(--gray-500);
+    transition: all 0.2s;
+  }
+  .btn-icon:hover { background: var(--danger); color: white; border-color: var(--danger); }
+
+  /* ========== Product Table ========== */
+  .product-table { width: 100%; border-collapse: collapse; }
+  .product-table th {
+    background: var(--gray-50);
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray-500);
+    text-align: left;
+    border-bottom: 2px solid var(--gray-200);
+    white-space: nowrap;
+  }
+  .product-table th.right { text-align: right; }
+  .product-table td {
+    padding: 8px 8px;
+    border-bottom: 1px solid var(--gray-100);
+    vertical-align: middle;
+  }
+  .product-table td input,
+  .product-table td select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    font-size: 13px;
+    background: white;
+  }
+  .product-table td input:focus,
+  .product-table td select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(26,86,219,0.1);
+  }
+  .product-table td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--gray-700);
+    padding-right: 12px;
+  }
+  .product-table .row-num {
+    width: 36px;
+    text-align: center;
+    color: var(--gray-400);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .product-table .col-action { width: 40px; text-align: center; }
+  .product-table .col-check { width: 36px; text-align: center; }
+
+  .add-row-bar {
+    padding: 12px;
+    border-top: 1px dashed var(--gray-200);
+    display: flex;
+    gap: 8px;
+  }
+
+  /* ========== Summary Bar ========== */
+  .summary-bar {
+    background: var(--gray-50);
+    border-top: 2px solid var(--gray-200);
+    padding: 16px 20px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .summary-table { width: 300px; }
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--gray-600);
+  }
+  .summary-row.total {
+    border-top: 2px solid var(--gray-900);
+    margin-top: 6px;
+    padding-top: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--gray-900);
+  }
+
+  /* ========== Sidebar ========== */
+  .sidebar { display: flex; flex-direction: column; gap: 20px; }
+  .preview-card {
+    position: sticky;
+    top: 90px;
+  }
+  .preview-frame {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    padding: 24px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #333;
+    min-height: 400px;
+    box-shadow: var(--shadow-sm);
+  }
+  .preview-frame h3 {
+    font-size: 18px;
+    text-align: center;
+    color: var(--primary);
+    margin-bottom: 4px;
+  }
+  .preview-frame .sub-title {
+    text-align: center;
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 16px;
+    border-bottom: 2px solid var(--primary);
+    padding-bottom: 12px;
+  }
+  .preview-frame .info-section {
+    margin-bottom: 12px;
+  }
+  .preview-frame .info-section .label {
+    font-size: 10px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .preview-frame .info-section .value {
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .preview-frame table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+  }
+  .preview-frame table th {
+    background: var(--primary);
+    color: white;
+    padding: 6px 8px;
+    font-size: 10px;
+    text-align: left;
+  }
+  .preview-frame table td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #eee;
+    font-size: 11px;
+  }
+  .preview-frame table tr:nth-child(even) { background: #f8f9fa; }
+  .preview-frame .total-row {
+    text-align: right;
+    font-weight: 700;
+    font-size: 13px;
+    margin-top: 8px;
+    color: var(--primary);
+  }
+  .preview-frame .terms {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+    font-size: 10px;
+    color: #666;
+  }
+  .preview-frame .terms strong { color: #333; }
+  .preview-frame .footer-note {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 9px;
+    color: #aaa;
+    border-top: 1px solid #eee;
+    padding-top: 8px;
+  }
+
+  /* ========== Template Selector ========== */
+  .template-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .template-chip {
+    padding: 6px 14px;
+    border: 2px solid var(--gray-200);
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+    color: var(--gray-600);
+  }
+  .template-chip.active {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary);
+  }
+  .template-chip:hover:not(.active) {
+    border-color: var(--gray-400);
+  }
+
+  /* ========== Print Styles ========== */
+  @media print {
+    body { background: white; }
+    .app-header, .sidebar, .no-print, .add-row-bar, .card-header .btn { display: none !important; }
+    .main-layout { display: block; }
+    .card { box-shadow: none; border: none; }
+    .print-preview {
+      display: block !important;
+      padding: 40px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+  }
+  .print-preview { display: none; }
+
+  /* ========== Toast ========== */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--gray-900);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ========== Misc ========== */
+  .section-divider {
+    border: none;
+    border-top: 1px dashed var(--gray-200);
+    margin: 16px 0;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .badge-blue { background: #dbeafe; color: #1d4ed8; }
+  .logo-upload {
+    width: 80px; height: 80px;
+    border: 2px dashed var(--gray-300);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.2s;
+    background: var(--gray-50);
+  }
+  .logo-upload:hover { border-color: var(--primary); }
+  .logo-upload img { width: 100%; height: 100%; object-fit: contain; }
+  .logo-upload .placeholder { color: var(--gray-400); font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="container">
+    <h1><span class="icon">📋</span> 外贸报价单生成器</h1>
+    <div class="header-actions">
+      <button class="btn btn-outline" style="color:white;border-color:rgba(255,255,255,0.3)" onclick="resetAll()">🔄 重置</button>
+      <button class="btn btn-accent" onclick="generatePreview()">👁 预览</button>
+      <button class="btn btn-lg" style="background:white;color:var(--primary)" onclick="exportPDF()">📄 导出 PDF</button>
+    </div>
+  </div>
+</header>
+
+<!-- Main Content -->
+<div class="container">
+  <div class="main-layout">
+    <!-- Left: Form -->
+    <div class="form-area">
+
+      <!-- Company Info -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h2>🏢 卖方信息</h2>
+          <div class="logo-upload" onclick="document.getElementById('logoInput').click()" id="logoPreview">
+            <span class="placeholder">LOGO</span>
+          </div>
+          <input type="file" id="logoInput" accept="image/*" style="display:none" onchange="handleLogo(event)">
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>公司名称</label>
+              <input type="text" id="sellerCompany" placeholder="Beijing Yunbaohang Trading Co., Ltd." oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>联系人</label>
+              <input type="text" id="sellerContact" placeholder="Zhang San" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>电话</label>
+              <input type="text" id="sellerPhone" placeholder="+86 131-xxxx-xxxx" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>邮箱</label>
+              <input type="text" id="sellerEmail" placeholder="sales@company.com" oninput="generatePreview()">
+            </div>
+            <div class="form-group full">
+              <label>地址</label>
+              <input type="text" id="sellerAddress" placeholder="Room xxx, Building xxx, District, Beijing, China" oninput="generatePreview()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Customer Info -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h2>👤 买方信息</h2>
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>公司名称</label>
+              <input type="text" id="buyerCompany" placeholder="ABC Trading LLC" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>联系人</label>
+              <input type="text" id="buyerContact" placeholder="John Smith" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>电话</label>
+              <input type="text" id="buyerPhone" placeholder="+971 50-xxx-xxxx" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>邮箱</label>
+              <input type="text" id="buyerEmail" placeholder="john@abc.com" oninput="generatePreview()">
+            </div>
+            <div class="form-group full">
+              <label>地址</label>
+              <input type="text" id="buyerAddress" placeholder="Dubai, UAE" oninput="generatePreview()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quote Meta -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><h2>📑 报价信息</h2></div>
+        <div class="card-body">
+          <div class="form-grid cols-3">
+            <div class="form-group">
+              <label>报价单号</label>
+              <input type="text" id="quoteNo" placeholder="QT-20260507-001" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>报价日期</label>
+              <input type="date" id="quoteDate" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>有效期至</label>
+              <input type="date" id="validUntil" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>币种</label>
+              <select id="currency" onchange="updateCurrency(); generatePreview()">
+                <option value="USD">USD 美元</option>
+                <option value="EUR">EUR 欧元</option>
+                <option value="GBP">GBP 英镑</option>
+                <option value="AED">AED 迪拉姆</option>
+                <option value="SAR">SAR 里亚尔</option>
+                <option value="RUB">RUB 卢布</option>
+                <option value="CNY">CNY 人民币</option>
+                <option value="JPY">JPY 日元</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>贸易条款</label>
+              <select id="tradeTerms" onchange="generatePreview()">
+                <option value="FOB">FOB</option>
+                <option value="CIF">CIF</option>
+                <option value="CFR">CFR</option>
+                <option value="EXW">EXW</option>
+                <option value="DDP">DDP</option>
+                <option value="DAP">DAP</option>
+              </select>
+            </div>
+            <div class="form-group full">
+              <label>付款方式</label>
+              <div id="paymentStages">
+                <!-- dynamic rows -->
+              </div>
+              <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                <button class="btn btn-sm btn-outline" onclick="addPaymentStage()">＋ 添加阶段</button>
+                <span id="paymentTotal" style="font-size:12px;font-weight:600;color:var(--accent)">合计: 100%</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>装运港</label>
+              <input type="text" id="portLoading" placeholder="Tianjin, China" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>目的港</label>
+              <input type="text" id="portDest" placeholder="Jeddah, Saudi Arabia" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>交货期</label>
+              <input type="text" id="deliveryTime" placeholder="30-45 days after deposit" oninput="generatePreview()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Products -->
+      <div class="card">
+        <div class="card-header">
+          <h2>📦 产品明细</h2>
+          <span class="badge badge-blue" id="itemCount">0 项</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="product-table" id="productTable">
+            <thead>
+              <tr>
+                <th class="row-num">#</th>
+                <th style="width:18%">OE No.</th>
+                <th style="width:22%">产品名称</th>
+                <th>包装</th>
+                <th>单位</th>
+                <th class="right">数量</th>
+                <th>币种</th>
+                <th class="right">单价</th>
+                <th class="right">金额</th>
+                <th class="col-action"></th>
+              </tr>
+            </thead>
+            <tbody id="productBody"></tbody>
+          </table>
+        </div>
+        <div class="add-row-bar">
+          <button class="btn btn-primary btn-sm" onclick="addRow()">＋ 添加产品</button>
+          <button class="btn btn-outline btn-sm" onclick="addSampleData()">📋 填充示例</button>
+        </div>
+        <div class="summary-bar">
+          <div class="summary-table">
+            <div class="summary-row">
+              <span>小计 Subtotal</span>
+              <span id="subtotalDisplay">$0.00</span>
+            </div>
+            <div class="summary-row">
+              <span>
+                折扣
+                <input type="number" id="discountRate" value="0" min="0" max="100" step="1"
+                  style="width:50px;padding:2px 6px;border:1px solid #ddd;border-radius:3px;font-size:12px;text-align:center"
+                  oninput="recalculate()">%
+              </span>
+              <span id="discountDisplay">-$0.00</span>
+            </div>
+            <div class="summary-row">
+              <span>
+                运费 (<span id="tradeTermsDisplay">FOB</span>)
+                <input type="number" id="shippingCost" value="0" min="0" step="0.01"
+                  style="width:80px;padding:2px 6px;border:1px solid #ddd;border-radius:3px;font-size:12px;text-align:right"
+                  oninput="recalculate()">
+              </span>
+              <span id="shippingDisplay">$0.00</span>
+            </div>
+            <div class="summary-row total">
+              <span>合计 Total</span>
+              <span id="totalDisplay">$0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header"><h2>📝 备注说明</h2></div>
+        <div class="card-body">
+          <textarea id="notes" rows="4" placeholder="1. Price based on MOQ 500pcs per item&#10;2. Samples available, freight collect&#10;3. OEM/ODM welcome" oninput="generatePreview()"></textarea>
+        </div>
+      </div>
+
+      <!-- Payment Account -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <h2>🏦 付款账户</h2>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="savedTemplates" onchange="loadTemplate()" style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px;max-width:160px">
+              <option value="">加载已保存模板...</option>
+            </select>
+            <button class="btn btn-sm btn-primary" onclick="saveTemplate()">💾 保存</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteTemplate()">🗑</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>模板名称</label>
+              <input type="text" id="tplName" placeholder="如：美元主账户">
+            </div>
+            <div class="form-group">
+              <label>收款公司</label>
+              <input type="text" id="payCompany" placeholder="Beneficiary Name" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>银行名称</label>
+              <input type="text" id="payBank" placeholder="Bank Name" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>银行地址</label>
+              <input type="text" id="payBankAddr" placeholder="Bank Address" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>SWIFT Code</label>
+              <input type="text" id="paySwift" placeholder="SWIFT/BIC Code" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>账号 / IBAN</label>
+              <input type="text" id="payAccount" placeholder="Account No. / IBAN" oninput="generatePreview()">
+            </div>
+            <div class="form-group">
+              <label>收款币种</label>
+              <select id="payCurrency" onchange="generatePreview()">
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="CNY">CNY</option>
+                <option value="AED">AED</option>
+                <option value="SAR">SAR</option>
+              </select>
+            </div>
+            <div class="form-group full">
+              <label>附言 / 备注</label>
+              <input type="text" id="payRemark" placeholder="Please include the Quote No. in the payment reference" oninput="generatePreview()">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Preview -->
+    <div class="sidebar">
+      <div class="card preview-card">
+        <div class="card-header">
+          <h2>👁 实时预览</h2>
+          <button class="btn btn-sm btn-outline" onclick="generatePreview()">刷新</button>
+        </div>
+        <div class="card-body" style="padding:12px">
+          <div class="preview-frame" id="previewFrame">
+            <div style="text-align:center;color:#aaa;padding:60px 0">
+              填写左侧信息后自动生成预览
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Print Preview (hidden, shown only when printing) -->
+<div class="print-preview" id="printPreview"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ========== State ==========
+let rowId = 0;
+const symbolMap = { USD:'$', EUR:'€', GBP:'£', AED:'د.إ', SAR:'﷼', RUB:'₽', CNY:'¥', JPY:'¥' };
+
+function getSymbol() { return symbolMap[document.getElementById('currency').value] || '$'; }
+function fmt(n) { return getSymbol() + Number(n||0).toFixed(2); }
+
+// ========== Payment Stages ==========
+let stageId = 0;
+function addPaymentStage(data) {
+  stageId++;
+  const container = document.getElementById('paymentStages');
+  const div = document.createElement('div');
+  div.id = 'stage-' + stageId;
+  div.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
+  div.innerHTML = `
+    <select class="stage-method" style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px;width:100px" onchange="generatePreview()">
+      <option value="T/T" ${data?.method==='T/T'?'selected':''}>T/T</option>
+      <option value="L/C" ${data?.method==='L/C'?'selected':''}>L/C</option>
+      <option value="D/P" ${data?.method==='D/P'?'selected':''}>D/P</option>
+      <option value="Western Union" ${data?.method==='Western Union'?'selected':''}>Western Union</option>
+      <option value="PayPal" ${data?.method==='PayPal'?'selected':''}>PayPal</option>
+      <option value="Cash" ${data?.method==='Cash'?'selected':''}>Cash</option>
+    </select>
+    <input type="number" class="stage-percent" value="${data?.percent||''}" min="0" max="100" placeholder="%" style="width:60px;padding:6px 8px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px;text-align:center" oninput="calcPaymentTotal(); generatePreview()">
+    <span style="font-size:12px;color:var(--gray-500)">%</span>
+    <input type="text" class="stage-desc" value="${data?.desc||''}" placeholder="e.g. before shipment" style="flex:1;padding:6px 8px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px" oninput="generatePreview()">
+    <button class="btn-icon" onclick="removeStage('${div.id}')">✕</button>
+  `;
+  container.appendChild(div);
+  calcPaymentTotal();
+}
+
+function removeStage(id) {
+  document.getElementById(id)?.remove();
+  calcPaymentTotal();
+  generatePreview();
+}
+
+function calcPaymentTotal() {
+  let total = 0;
+  document.querySelectorAll('.stage-percent').forEach(el => {
+    total += parseFloat(el.value) || 0;
+  });
+  const display = document.getElementById('paymentTotal');
+  display.textContent = '合计: ' + total + '%';
+  display.style.color = total === 100 ? 'var(--accent)' : 'var(--danger)';
+}
+
+function getPaymentSummary() {
+  const stages = [];
+  document.querySelectorAll('#paymentStages > div').forEach(div => {
+    const method = div.querySelector('.stage-method')?.value || '';
+    const percent = div.querySelector('.stage-percent')?.value || '';
+    const desc = div.querySelector('.stage-desc')?.value || '';
+    if (method && percent) {
+      stages.push(`${method} ${percent}%${desc ? ' ' + desc : ''}`);
+    }
+  });
+  return stages.join(' + ') || '—';
+}
+
+// ========== Account Templates (localStorage) ==========
+const TPL_KEY = 'quotation_account_templates';
+
+function getTemplates() {
+  try { return JSON.parse(localStorage.getItem(TPL_KEY)) || {}; } catch { return {}; }
+}
+
+function refreshTemplateList() {
+  const sel = document.getElementById('savedTemplates');
+  const tpls = getTemplates();
+  sel.innerHTML = '<option value="">加载已保存模板...</option>';
+  Object.keys(tpls).forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+}
+
+function saveTemplate() {
+  const name = document.getElementById('tplName').value.trim();
+  if (!name) { showToast('⚠️ 请输入模板名称'); return; }
+  const tpls = getTemplates();
+  tpls[name] = {
+    company: document.getElementById('payCompany').value,
+    bank: document.getElementById('payBank').value,
+    bankAddr: document.getElementById('payBankAddr').value,
+    swift: document.getElementById('paySwift').value,
+    account: document.getElementById('payAccount').value,
+    currency: document.getElementById('payCurrency').value,
+    remark: document.getElementById('payRemark').value,
+  };
+  localStorage.setItem(TPL_KEY, JSON.stringify(tpls));
+  refreshTemplateList();
+  document.getElementById('savedTemplates').value = name;
+  showToast('✅ 模板 "' + name + '" 已保存');
+}
+
+function loadTemplate() {
+  const name = document.getElementById('savedTemplates').value;
+  if (!name) return;
+  const tpls = getTemplates();
+  const t = tpls[name];
+  if (!t) return;
+  document.getElementById('tplName').value = name;
+  document.getElementById('payCompany').value = t.company || '';
+  document.getElementById('payBank').value = t.bank || '';
+  document.getElementById('payBankAddr').value = t.bankAddr || '';
+  document.getElementById('paySwift').value = t.swift || '';
+  document.getElementById('payAccount').value = t.account || '';
+  document.getElementById('payCurrency').value = t.currency || 'USD';
+  document.getElementById('payRemark').value = t.remark || '';
+  generatePreview();
+  showToast('📂 已加载模板 "' + name + '"');
+}
+
+function deleteTemplate() {
+  const name = document.getElementById('savedTemplates').value;
+  if (!name) { showToast('⚠️ 请先选择要删除的模板'); return; }
+  if (!confirm('确定删除模板 "' + name + '" 吗？')) return;
+  const tpls = getTemplates();
+  delete tpls[name];
+  localStorage.setItem(TPL_KEY, JSON.stringify(tpls));
+  refreshTemplateList();
+  showToast('🗑 模板已删除');
+}
+
+// ========== Logo ==========
+function handleLogo(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('logoPreview').innerHTML = `<img src="${ev.target.result}" alt="logo">`;
+    window._logoData = ev.target.result;
+    generatePreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+// ========== Rows ==========
+function addRow(data) {
+  rowId++;
+  const tbody = document.getElementById('productBody');
+  const tr = document.createElement('tr');
+  tr.id = 'row-' + rowId;
+  const curVal = document.getElementById('currency').value;
+  tr.innerHTML = `
+    <td class="row-num">${tbody.rows.length + 1}</td>
+    <td><input type="text" class="oe" placeholder="26300-35503" value="${data?.oe||''}" oninput="generatePreview()"></td>
+    <td><input type="text" class="name" placeholder="Oil Filter" value="${data?.name||''}" oninput="generatePreview()"></td>
+    <td>
+      <select class="pkg" onchange="generatePreview()">
+        <option value="Hyundai" ${data?.pkg==='Hyundai'?'selected':''}>Hyundai</option>
+        <option value="KIA" ${data?.pkg==='KIA'?'selected':''}>KIA</option>
+        <option value="Mobis" ${data?.pkg==='Mobis'?'selected':''}>Mobis</option>
+        <option value="其他" ${data?.pkg==='其他'?'selected':''}>其他</option>
+      </select>
+    </td>
+    <td>
+      <select class="unit" onchange="generatePreview()">
+        <option value="pcs" ${data?.unit==='pcs'?'selected':''}>pcs</option>
+        <option value="sets" ${data?.unit==='sets'?'selected':''}>sets</option>
+        <option value="pairs" ${data?.unit==='pairs'?'selected':''}>pairs</option>
+        <option value="rolls" ${data?.unit==='rolls'?'selected':''}>rolls</option>
+        <option value="kg" ${data?.unit==='kg'?'selected':''}>kg</option>
+        <option value="cartons" ${data?.unit==='cartons'?'selected':''}>cartons</option>
+      </select>
+    </td>
+    <td><input type="number" class="qty" placeholder="0" value="${data?.qty||''}" min="0" oninput="calcRow(this); generatePreview()"></td>
+    <td class="num row-currency">${data?.currency||curVal}</td>
+    <td><input type="number" class="price" placeholder="0.00" value="${data?.price||''}" min="0" step="0.01" oninput="calcRow(this); generatePreview()"></td>
+    <td class="num amount">${data ? fmt(data.qty * data.price) : fmt(0)}</td>
+    <td class="col-action"><button class="btn-icon" onclick="removeRow('${tr.id}')">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+  renumberRows();
+  generatePreview();
+}
+
+function removeRow(id) {
+  document.getElementById(id)?.remove();
+  renumberRows();
+  recalculate();
+  generatePreview();
+}
+
+function renumberRows() {
+  const rows = document.getElementById('productBody').rows;
+  for (let i = 0; i < rows.length; i++) {
+    rows[i].cells[0].textContent = i + 1;
+  }
+  document.getElementById('itemCount').textContent = rows.length + ' 项';
+}
+
+function calcRow(el) {
+  const tr = el.closest('tr');
+  const qty = parseFloat(tr.querySelector('.qty').value) || 0;
+  const price = parseFloat(tr.querySelector('.price').value) || 0;
+  tr.querySelector('.amount').textContent = fmt(qty * price);
+  recalculate();
+}
+
+function recalculate() {
+  let subtotal = 0;
+  document.querySelectorAll('#productBody tr').forEach(tr => {
+    const qty = parseFloat(tr.querySelector('.qty')?.value) || 0;
+    const price = parseFloat(tr.querySelector('.price')?.value) || 0;
+    subtotal += qty * price;
+  });
+
+  const discountRate = parseFloat(document.getElementById('discountRate').value) || 0;
+  const discount = subtotal * discountRate / 100;
+  const shipping = parseFloat(document.getElementById('shippingCost').value) || 0;
+  const total = subtotal - discount + shipping;
+
+  document.getElementById('subtotalDisplay').textContent = fmt(subtotal);
+  document.getElementById('discountDisplay').textContent = '-' + fmt(discount);
+  document.getElementById('shippingDisplay').textContent = fmt(shipping);
+  document.getElementById('totalDisplay').textContent = fmt(total);
+  document.getElementById('tradeTermsDisplay').textContent = document.getElementById('tradeTerms').value;
+}
+
+// ========== Sample Data ==========
+function addSampleData() {
+  document.getElementById('sellerCompany').value = 'Beijing Yunbaohang Trading Co., Ltd.';
+  document.getElementById('sellerContact').value = 'Zhang San';
+  document.getElementById('sellerPhone').value = '+86 131-7219-0207';
+  document.getElementById('sellerEmail').value = 'sales@yunbaohang.com';
+  document.getElementById('sellerAddress').value = 'Room 1205, Building A, Chaoyang District, Beijing, China';
+
+  document.getElementById('buyerCompany').value = 'Al Rashid Auto Parts LLC';
+  document.getElementById('buyerContact').value = 'Ahmed Al Rashid';
+  document.getElementById('buyerPhone').value = '+966 55 123 4567';
+  document.getElementById('buyerEmail').value = 'ahmed@alrashidparts.com';
+  document.getElementById('buyerAddress').value = 'Riyadh Industrial Area, Saudi Arabia';
+
+  document.getElementById('quoteNo').value = 'QT-20260507-001';
+  document.getElementById('quoteDate').value = '2026-05-07';
+  document.getElementById('validUntil').value = '2026-06-07';
+  document.getElementById('portLoading').value = 'Tianjin, China';
+  document.getElementById('portDest').value = 'Jeddah, Saudi Arabia';
+  document.getElementById('deliveryTime').value = '30-45 days after deposit received';
+  document.getElementById('shippingCost').value = '2800';
+
+  document.getElementById('notes').value =
+    '1. Price based on MOQ 500pcs per item\n' +
+    '2. Samples available, freight collect\n' +
+    '3. OEM/ODM welcome, custom packaging available\n' +
+    '4. Warranty: 12 months from date of shipment';
+
+  // Fill bank account
+  document.getElementById('tplName').value = '美元主账户';
+  document.getElementById('payCompany').value = 'Beijing Yunbaohang Trading Co., Ltd.';
+  document.getElementById('payBank').value = 'Bank of China, Beijing Branch';
+  document.getElementById('payBankAddr').value = 'No.2 Chaoyangmennei Ave, Beijing, China';
+  document.getElementById('paySwift').value = 'BKCHCNBJ';
+  document.getElementById('payAccount').value = '3201 5678 9012 3456 789';
+  document.getElementById('payCurrency').value = 'USD';
+  document.getElementById('payRemark').value = 'Please include Quote No. QT-20260507-001 in payment reference';
+
+  // Add payment stages
+  document.getElementById('paymentStages').innerHTML = '';
+  stageId = 0;
+  addPaymentStage({ method: 'T/T', percent: 30, desc: 'Deposit' });
+  addPaymentStage({ method: 'T/T', percent: 70, desc: 'Before shipment' });
+
+  // Clear existing rows
+  document.getElementById('productBody').innerHTML = '';
+  rowId = 0;
+
+  const samples = [
+    { oe: '26300-35503', name: 'Oil Filter (Hyundai Tucson)', pkg: 'Hyundai', unit: 'pcs', qty: 2000, price: 1.20 },
+    { oe: '28113-L1000', name: 'Air Filter (Hyundai Sonata)', pkg: 'Hyundai', unit: 'pcs', qty: 1500, price: 2.50 },
+    { oe: '58101-3LA00', name: 'Brake Pad Set Front (Kia Sportage)', pkg: 'KIA', unit: 'sets', qty: 800, price: 8.50 },
+    { oe: '18855-10080', name: 'Spark Plug (Hyundai Elantra)', pkg: 'Mobis', unit: 'pcs', qty: 5000, price: 0.65 },
+    { oe: '24312-26050', name: 'Timing Belt Kit (Hyundai Accent)', pkg: '其他', unit: 'sets', qty: 500, price: 15.80 },
+  ];
+  samples.forEach(s => addRow(s));
+  recalculate();
+  generatePreview();
+  showToast('✅ 示例数据已填充');
+}
+
+// ========== Preview ==========
+function generatePreview() {
+  const frame = document.getElementById('previewFrame');
+  const rows = document.querySelectorAll('#productBody tr');
+  if (rows.length === 0) {
+    frame.innerHTML = '<div style="text-align:center;color:#aaa;padding:60px 0">添加产品后自动生成预览</div>';
+    return;
+  }
+
+  const v = id => document.getElementById(id)?.value || '';
+  const sym = getSymbol();
+
+  let productRows = '';
+  let subtotal = 0;
+  rows.forEach((tr, i) => {
+    const oe = tr.querySelector('.oe')?.value || '';
+    const name = tr.querySelector('.name')?.value || '';
+    const pkg = tr.querySelector('.pkg')?.value || '';
+    const unit = tr.querySelector('.unit')?.value || 'pcs';
+    const qty = parseFloat(tr.querySelector('.qty')?.value) || 0;
+    const price = parseFloat(tr.querySelector('.price')?.value) || 0;
+    const rowCur = tr.querySelector('.row-currency')?.textContent || sym;
+    const amount = qty * price;
+    subtotal += amount;
+    if (name || qty || price) {
+      productRows += `<tr>
+        <td style="text-align:center">${i+1}</td>
+        <td>${oe}</td>
+        <td>${name}</td>
+        <td style="text-align:center">${pkg}</td>
+        <td style="text-align:center">${qty} ${unit}</td>
+        <td style="text-align:center">${rowCur}</td>
+        <td style="text-align:right">${rowCur}${price.toFixed(2)}</td>
+        <td style="text-align:right">${rowCur}${amount.toFixed(2)}</td>
+      </tr>`;
+    }
+  });
+
+  const discountRate = parseFloat(v('discountRate')) || 0;
+  const discount = subtotal * discountRate / 100;
+  const shipping = parseFloat(v('shippingCost')) || 0;
+  const total = subtotal - discount + shipping;
+
+  const logoHTML = window._logoData ? `<img src="${window._logoData}" style="max-height:50px;margin-bottom:8px">` : '';
+
+  frame.innerHTML = `
+    ${logoHTML}
+    <h3>${v('sellerCompany') || 'YOUR COMPANY'}</h3>
+    <div class="sub-title">QUOTATION / PROFORMA INVOICE</div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+      <div class="info-section">
+        <div class="label">TO</div>
+        <div class="value" style="font-size:13px;font-weight:600">${v('buyerCompany') || '—'}</div>
+        <div class="value">${v('buyerContact') || ''}</div>
+        <div class="value">${v('buyerAddress') || ''}</div>
+        <div class="value">${v('buyerPhone') || ''}</div>
+      </div>
+      <div class="info-section" style="text-align:right">
+        <div><span class="label">Quote No:</span> <span class="value">${v('quoteNo') || '—'}</span></div>
+        <div><span class="label">Date:</span> <span class="value">${v('quoteDate') || '—'}</span></div>
+        <div><span class="label">Valid Until:</span> <span class="value">${v('validUntil') || '—'}</span></div>
+        <div><span class="label">Currency:</span> <span class="value">${v('currency')}</span></div>
+      </div>
+    </div>
+
+    <table>
+      <tr>
+        <th style="width:25px">#</th>
+        <th>OE No.</th>
+        <th>Product</th>
+        <th style="text-align:center">Package</th>
+        <th style="text-align:center">Qty</th>
+        <th style="text-align:center">Currency</th>
+        <th style="text-align:right">Unit Price</th>
+        <th style="text-align:right">Amount</th>
+      </tr>
+      ${productRows}
+    </table>
+
+    <div style="display:flex;justify-content:flex-end">
+      <div style="width:200px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0">
+          <span>Subtotal</span><span>${sym}${subtotal.toFixed(2)}</span>
+        </div>
+        ${discountRate > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;color:#dc2626">
+          <span>Discount (${discountRate}%)</span><span>-${sym}${discount.toFixed(2)}</span>
+        </div>` : ''}
+        ${shipping > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0">
+          <span>Shipping (${v('tradeTerms')})</span><span>${sym}${shipping.toFixed(2)}</span>
+        </div>` : ''}
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding:6px 0;border-top:2px solid #1a56db;color:#1a56db">
+          <span>TOTAL</span><span>${sym}${total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="terms">
+      <div style="display:flex;gap:24px;margin-bottom:6px">
+        <div><strong>Trade Terms:</strong> ${v('tradeTerms')}</div>
+        <div><strong>Payment:</strong> ${getPaymentSummary()}</div>
+      </div>
+      <div style="display:flex;gap:24px;margin-bottom:6px">
+        <div><strong>Loading Port:</strong> ${v('portLoading') || '—'}</div>
+        <div><strong>Destination:</strong> ${v('portDest') || '—'}</div>
+      </div>
+      <div><strong>Delivery:</strong> ${v('deliveryTime') || '—'}</div>
+      ${v('notes') ? `<div style="margin-top:8px"><strong>Notes:</strong><br>${v('notes').replace(/\n/g,'<br>')}</div>` : ''}
+
+    ${(v('payCompany') || v('payBank') || v('payAccount')) ? `
+    <div style="margin-top:12px;padding-top:10px;border-top:2px solid #1a56db">
+      <div style="font-size:11px;font-weight:700;color:#1a56db;margin-bottom:6px">🏦 PAYMENT DETAILS</div>
+      <table style="margin:0;font-size:10px">
+        <tr><td style="width:100px;color:#888;padding:2px 8px 2px 0">Beneficiary</td><td style="padding:2px 0;font-weight:500">${v('payCompany')}</td></tr>
+        <tr><td style="color:#888;padding:2px 8px 2px 0">Bank</td><td style="padding:2px 0">${v('payBank')}</td></tr>
+        ${v('payBankAddr') ? `<tr><td style="color:#888;padding:2px 8px 2px 0">Bank Address</td><td style="padding:2px 0">${v('payBankAddr')}</td></tr>` : ''}
+        <tr><td style="color:#888;padding:2px 8px 2px 0">SWIFT</td><td style="padding:2px 0;font-weight:600;letter-spacing:1px">${v('paySwift')}</td></tr>
+        <tr><td style="color:#888;padding:2px 8px 2px 0">Account</td><td style="padding:2px 0;font-weight:600;letter-spacing:0.5px">${v('payAccount')}</td></tr>
+        <tr><td style="color:#888;padding:2px 8px 2px 0">Currency</td><td style="padding:2px 0">${v('payCurrency')}</td></tr>
+      </table>
+      ${v('payRemark') ? `<div style="margin-top:4px;font-size:9px;color:#666;font-style:italic">${v('payRemark')}</div>` : ''}
+    </div>` : ''}
+    </div>
+
+    <div class="footer-note">
+      This quotation is valid for the period shown above. Prices are subject to change without prior notice.<br>
+      ${v('sellerCompany') || ''} | ${v('sellerPhone') || ''} | ${v('sellerEmail') || ''}
+    </div>
+  `;
+
+  recalculate();
+}
+
+// ========== Export ==========
+function exportPDF() {
+  const preview = document.getElementById('previewFrame').innerHTML;
+  if (!preview || preview.includes('填写左侧信息')) {
+    showToast('⚠️ 请先填写信息并添加产品');
+    return;
+  }
+  const printWin = window.open('', '_blank');
+  printWin.document.write(`
+    <!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Quotation - ${document.getElementById('quoteNo').value || 'Draft'}</title>
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; padding:40px; color:#333; }
+      h3 { font-size:20px; text-align:center; color:#1a56db; margin-bottom:4px; }
+      .sub-title { text-align:center; font-size:13px; color:#888; margin-bottom:16px; border-bottom:2px solid #1a56db; padding-bottom:12px; }
+      .info-section .label { font-size:10px; color:#999; text-transform:uppercase; }
+      .info-section .value { font-size:12px; font-weight:500; }
+      table { width:100%; border-collapse:collapse; margin:12px 0; }
+      table th { background:#1a56db; color:white; padding:8px; font-size:11px; text-align:left; }
+      table td { padding:6px 8px; border-bottom:1px solid #eee; font-size:11px; }
+      table tr:nth-child(even) { background:#f8f9fa; }
+      .terms { margin-top:16px; padding-top:12px; border-top:1px solid #eee; font-size:11px; color:#666; }
+      .terms strong { color:#333; }
+      .footer-note { margin-top:20px; text-align:center; font-size:9px; color:#aaa; border-top:1px solid #eee; padding-top:8px; }
+      @media print { body { padding:20px; } }
+    </style></head><body>
+    ${preview}
+    <script>setTimeout(()=>window.print(),500)<\/script>
+    </body></html>
+  `);
+  printWin.document.close();
+  showToast('✅ 已打开打印窗口，选择"另存为 PDF"即可导出');
+}
+
+// ========== Misc ==========
+function resetAll() {
+  if (!confirm('确定要清空所有内容吗？')) return;
+  document.querySelectorAll('input[type=text], input[type=date], textarea').forEach(el => el.value = '');
+  document.querySelectorAll('select').forEach(el => el.selectedIndex = 0);
+  document.getElementById('productBody').innerHTML = '';
+  document.getElementById('paymentStages').innerHTML = '';
+  document.getElementById('discountRate').value = 0;
+  document.getElementById('shippingCost').value = 0;
+  document.getElementById('logoPreview').innerHTML = '<span class="placeholder">LOGO</span>';
+  window._logoData = null;
+  rowId = 0;
+  stageId = 0;
+  calcPaymentTotal();
+  recalculate();
+  generatePreview();
+  showToast('🔄 已重置');
+}
+
+function updateCurrency() {
+  document.getElementById('tradeTermsDisplay').textContent = document.getElementById('tradeTerms').value;
+  const cur = document.getElementById('currency').value;
+  document.querySelectorAll('#productBody .row-currency').forEach(td => td.textContent = cur);
+  // Recalculate all row amounts
+  document.querySelectorAll('#productBody tr').forEach(tr => {
+    const input = tr.querySelector('.price');
+    if (input) calcRow(input);
+  });
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ========== Init ==========
+document.getElementById('quoteDate').valueAsDate = new Date();
+const validDate = new Date();
+validDate.setDate(validDate.getDate() + 30);
+document.getElementById('validUntil').valueAsDate = validDate;
+refreshTemplateList();
+// Add default payment stages
+addPaymentStage({ method: 'T/T', percent: 30, desc: 'Deposit' });
+addPaymentStage({ method: 'T/T', percent: 70, desc: 'Before shipment' });
+</script>
+</body>
+</html>

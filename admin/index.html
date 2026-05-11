@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhatsApp SaaS 管理后台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh}
+.header{background:#075E54;color:white;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:18px;font-weight:600}
+.header .user{font-size:13px;opacity:.85;cursor:pointer}
+.layout{display:flex;height:calc(100vh - 56px)}
+.sidebar{width:200px;background:white;border-right:1px solid #e8e8e8;padding:12px 0}
+.sidebar a{display:flex;align-items:center;padding:10px 20px;color:#333;text-decoration:none;font-size:14px;gap:8px;transition:.15s}
+.sidebar a:hover,.sidebar a.active{background:#e6f7f0;color:#075E54;font-weight:600}
+.main{flex:1;padding:20px 24px;overflow:auto}
+.card{background:white;border-radius:8px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.card h2{font-size:16px;color:#333;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:white;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.stat .label{font-size:12px;color:#999;margin-bottom:4px}
+.stat .value{font-size:24px;font-weight:700;color:#333}
+.stat.green .value{color:#52c41a}
+.stat.blue .value{color:#1890ff}
+.stat.red .value{color:#ff4d4f}
+.btn{padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:500;transition:.15s;white-space:nowrap}
+.btn-primary{background:#075E54;color:white}
+.btn-primary:hover{background:#054d44}
+.btn-danger{background:#ff4d4f;color:white}
+.btn-danger:hover{background:#e04345}
+.btn-success{background:#25D366;color:white}
+.btn-success:hover{background:#1ebe5b}
+.btn-warning{background:#faad14;color:white}
+.btn-warning:hover{background:#d9990e}
+.btn-default{background:#f0f0f0;color:#333}
+.btn-default:hover{background:#e0e0e0}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-xs{padding:2px 8px;font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #f0f0f0}
+th{background:#fafafa;color:#666;font-weight:600;font-size:12px}
+tr:hover{background:#fafafa}
+.badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-success{background:#d4edda;color:#155724}
+.badge-warning{background:#fff3cd;color:#856404}
+.badge-danger{background:#f8d7da;color:#721c24}
+.badge-info{background:#d1ecf1;color:#0c5460}
+.badge-secondary{background:#e2e3e5;color:#383d41}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:13px;color:#666;margin-bottom:4px;font-weight:500}
+.form-group input,.form-group select{width:100%;padding:8px 12px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px;transition:.15s}
+.form-group input:focus,.form-group select:focus{border-color:#075E54;outline:none;box-shadow:0 0 0 2px rgba(7,94,84,.15)}
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal{background:white;border-radius:12px;padding:24px;width:500px;max-width:90vw;max-height:90vh;overflow:auto}
+.modal-lg{width:600px}
+.modal h3{margin-bottom:16px;font-size:16px}
+.toast{position:fixed;top:16px;right:16px;padding:12px 20px;border-radius:8px;color:white;font-size:13px;z-index:2000;animation:slideIn .3s ease}
+.toast-success{background:#52c41a}
+.toast-error{background:#ff4d4f}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.loading{opacity:.6;pointer-events:none}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ddd;border-top-color:#075E54;border-radius:50%;animation:spin .6s linear infinite;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none!important}
+.login-page{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#075E54,#128C7E,#25D366)}
+.login-card{background:white;border-radius:12px;padding:32px;width:360px;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+.login-card h2{text-align:center;color:#075E54;margin-bottom:24px}
+.gap-8{display:flex;gap:8px;flex-wrap:wrap}
+.mt-12{margin-top:12px}
+.ml-4{margin-left:4px}
+.flex-between{display:flex;justify-content:space-between;align-items:center}
+.qr-center{text-align:center;padding:16px}
+.qr-center img{max-width:256px;width:100%;border-radius:8px;border:2px dashed #25D366;padding:8px}
+.qr-hint{color:#667781;font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+
+<!-- 登录 -->
+<div id="loginPage" class="login-page">
+<div class="login-card">
+<h2>WhatsApp SaaS 管理后台</h2>
+<div class="form-group"><label>用户名</label><input id="loginUser" type="text" placeholder="admin"></div>
+<div class="form-group"><label>密码</label><input id="loginPass" type="password" onkeydown="if(event.key==='Enter')login()"></div>
+<div id="loginError" style="color:#ff4d4f;font-size:12px;margin-bottom:12px;display:none"></div>
+<button class="btn btn-primary" style="width:100%" onclick="login()">登 录</button>
+</div>
+</div>
+
+<!-- 主界面 -->
+<div id="app" class="hidden">
+<div class="header">
+<h1>WhatsApp SaaS 管理后台</h1>
+<div class="user" onclick="logout()">退出登录</div>
+</div>
+<div class="layout">
+<div class="sidebar">
+<a href="#" class="active" data-page="dashboard" onclick="switchPage('dashboard')">仪表盘</a>
+<a href="#" data-page="tenants" onclick="switchPage('tenants')">租户管理</a>
+<a href="#" data-page="status" onclick="switchPage('status')">服务器状态</a>
+<a href="#" data-page="proxy" onclick="switchPage('proxy')">代理设置</a>
+</div>
+<div class="main" id="mainContent"></div>
+</div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+const API = '/api/admin';
+let token = localStorage.getItem('wsa_token');
+let qrPolling = null;
+
+// ===== 初始化 =====
+if (token) { verifyAndEnter(); }
+
+function verifyAndEnter() {
+    fetch(API + '/status', {headers:{'Authorization':'Bearer '+token}})
+        .then(r => { if(r.ok){ document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden'); switchPage('dashboard'); }
+            else { localStorage.removeItem('wsa_token'); token=null; } })
+        .catch(()=>{});
+}
+
+// ===== 登录 =====
+function login() {
+    const u = document.getElementById('loginUser').value;
+    const p = document.getElementById('loginPass').value;
+    document.getElementById('loginError').style.display='none';
+    fetch(API+'/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({username:u,password:p})
+    }).then(r=>r.json()).then(d=>{
+        if(d.token) {
+            token = d.token;
+            localStorage.setItem('wsa_token', token);
+            document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            switchPage('dashboard');
+        } else {
+            document.getElementById('loginError').textContent = d.error || '登录失败';
+            document.getElementById('loginError').style.display='block';
+        }
+    });
+}
+
+function logout() {
+    localStorage.removeItem('wsa_token');
+    token = null;
+    document.getElementById('loginPage').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+}
+
+// ===== 页面切换 =====
+function switchPage(page) {
+    document.querySelectorAll('.sidebar a').forEach(a=>a.classList.remove('active'));
+    document.querySelector(`[data-page="${page}"]`).classList.add('active');
+    if (page==='dashboard') loadDashboard();
+    else if (page==='tenants') loadTenants();
+    else if (page==='status') loadStatus();
+    else if (page==='proxy') loadProxy();
+}
+
+// ===== 仪表盘 =====
+function loadDashboard() {
+    Promise.all([
+        authFetch(API+'/status').then(r=>r.json()),
+        authFetch(API+'/tenants').then(r=>r.json())
+    ]).then(([status, tenants]) => {
+        const s = status.system || {};
+        const tc = tenants.tenants ? tenants.tenants.length : 0;
+        const active = tenants.tenants ? tenants.tenants.filter(t=>t.is_active).length : 0;
+        const waOk = tenants.tenants ? tenants.tenants.filter(t=>t.waha_status==='WORKING').length : 0;
+        document.getElementById('mainContent').innerHTML = `
+            <h2 style="margin-bottom:16px">仪表盘</h2>
+            <div class="stats">
+                <div class="stat blue"><div class="label">租户总数</div><div class="value">${tc}</div></div>
+                <div class="stat green"><div class="label">已激活</div><div class="value">${active}</div></div>
+                <div class="stat green"><div class="label">WA 已连接</div><div class="value">${waOk}</div></div>
+                <div class="stat"><div class="label">内存</div><div class="value" style="font-size:20px">${s.memory_used_mb||0} / ${s.memory_total_mb||0} MB</div></div>
+                <div class="stat"><div class="label">磁盘</div><div class="value" style="font-size:20px">${s.disk_usage_pct||'?'}</div></div>
+                <div class="stat"><div class="label">CPU ${s.cpu_cores||1}核 · 负载率</div><div class="value" style="font-size:20px">${s.load_pct||0}%</div></div>
+            </div>
+            <div class="card">
+                <h2>最近租户</h2>
+                <table>
+                    <tr><th>公司</th><th>用户名</th><th>WA 号码</th><th>WA 状态</th><th>创建时间</th><th>操作</th></tr>
+                    ${(tenants.tenants||[]).slice(0,5).map(t=>`
+                        <tr>
+                            <td><b>${esc(t.company_name)}</b></td>
+                            <td>${esc(t.username)}</td>
+                            <td>${t.waha_number||'-'}</td>
+                            <td>${waBadge(t)}</td>
+                            <td>${(t.created_at||'').slice(0,10)}</td>
+                            <td class="gap-8">${actionButtons(t)}</td>
+                        </tr>
+                    `).join('')||'<tr><td colspan="6" style="color:#999;text-align:center;padding:24px">暂无租户，请先添加</td></tr>'}
+                </table>
+            </div>
+        `;
+    }).catch(e=>toast('加载失败: '+e, 'error'));
+}
+
+// ===== 租户管理 =====
+function loadTenants() {
+    authFetch(API+'/tenants').then(r=>r.json()).then(data=>{
+        const tenants = data.tenants || [];
+        document.getElementById('mainContent').innerHTML = `
+            <div class="flex-between" style="margin-bottom:16px">
+                <h2>租户管理</h2>
+                <button class="btn btn-primary" onclick="showTenantModal()">+ 添加租户</button>
+            </div>
+            <div class="card">
+                <table>
+                    <tr><th>ID</th><th>公司</th><th>用户名</th><th>邮箱</th><th>已绑 WA 号码</th><th>WA 状态</th><th>Docker</th><th>操作</th></tr>
+                    ${tenants.map(t=>`
+                        <tr>
+                            <td>${t.id}</td>
+                            <td><b>${esc(t.company_name)}</b></td>
+                            <td>${esc(t.username)}</td>
+                            <td>${t.email||'-'}</td>
+                            <td><b>${t.waha_number||'-'}</b></td>
+                            <td>${waBadge(t)}</td>
+                            <td><span class="badge ${t.container_name?'badge-info':'badge-secondary'}">${t.container_name?'已创建':'未部署'}</span></td>
+                            <td class="gap-8">${actionButtons(t)}</td>
+                        </tr>
+                    `).join('')||'<tr><td colspan="8" style="color:#999;text-align:center;padding:24px">暂无租户。"+ 添加租户" 创建第一个</td></tr>'}
+                </table>
+            </div>
+        `;
+    });
+}
+
+function waBadge(t) {
+    const s = t.waha_status || 'none';
+    if (s === 'WORKING') return '<span class="badge badge-success">已连接</span>';
+    if (s === 'SCAN_QR_CODE') return '<span class="badge badge-warning">待扫码</span>';
+    if (s === 'STARTING') return '<span class="badge badge-info">启动中</span>';
+    if (s === 'offline') return '<span class="badge badge-danger">离线</span>';
+    return '<span class="badge badge-secondary">未部署</span>';
+}
+
+function actionButtons(t) {
+    let btns = '';
+    const hasContainer = !!t.container_name;
+    btns += `<button class="btn btn-default btn-xs" onclick="showTenantDetail(${t.id})">详情</button>`;
+    if (hasContainer) {
+        btns += `<button class="btn btn-default btn-xs" onclick="toggleContainer(${t.id},'start')">启动</button>`;
+        btns += `<button class="btn btn-default btn-xs" onclick="toggleContainer(${t.id},'stop')">停止</button>`;
+        if (t.waha_status === 'SCAN_QR_CODE' || t.waha_status === 'STARTING' || t.waha_status === 'offline') {
+            btns += `<button class="btn btn-success btn-xs" onclick="showQR(${t.id})">扫码</button>`;
+        }
+        btns += `<button class="btn btn-warning btn-xs" onclick="sessionAction(${t.id},'restart')">重启会话</button>`;
+        btns += `<button class="btn btn-danger btn-xs" onclick="sessionAction(${t.id},'logout')">登出</button>`;
+        btns += `<button class="btn btn-danger btn-xs" onclick="deleteTenant(${t.id})">删除</button>`;
+    } else {
+        btns += `<button class="btn btn-danger btn-xs" onclick="deleteTenant(${t.id})">删除</button>`;
+    }
+    return btns;
+}
+
+// ===== QR 扫码 =====
+let qrTenantId = null;
+function showQR(tenantId) {
+    qrTenantId = tenantId;
+    showModal('扫码连接 WhatsApp', `
+        <div class="qr-center" id="qrContent">
+            <p style="color:#999;margin-bottom:12px">正在获取二维码...</p>
+        </div>
+        <p class="qr-hint">请用 WhatsApp 手机 App 扫描二维码（有效期约 20 秒）</p>
+        <div class="flex-between mt-12">
+            <button class="btn btn-default" onclick="refreshQR()">刷新二维码</button>
+            <button class="btn btn-default" onclick="closeModal()">关闭</button>
+        </div>
+    `, 'modal-lg');
+    refreshQR();
+}
+
+function refreshQR() {
+    const el = document.getElementById('qrContent');
+    el.innerHTML = '<p style="color:#999;margin-bottom:12px">正在获取二维码...</p>';
+    authFetch(API+'/tenants/'+qrTenantId+'/qr', {}, 'blob')
+        .then(r => {
+            if (!r.ok) return r.json().then(d => { throw new Error(d.error || '获取失败'); });
+            return r.blob();
+        })
+        .then(data => {
+            if (data instanceof Blob) {
+                const url = URL.createObjectURL(data);
+                el.innerHTML = `<img src="${url}" alt="QR Code"><p class="qr-hint">二维码已生成，请尽快扫描</p>`;
+            }
+        })
+        .catch(e => {
+            el.innerHTML = `<p style="color:#ff4d4f">${esc(e.message)}</p><p class="qr-hint">请确认容器已启动且会话处于待扫码状态</p>`;
+        });
+}
+
+// ===== 会话操作 =====
+function sessionAction(tenantId, action) {
+    const labels = {restart:'确认重启会话？', logout:'确认登出？登出后需要重新扫码连接'};
+    if (!confirm(labels[action] || '确认？')) return;
+    authFetch(API+'/tenants/'+tenantId+'/session/'+action, {method:'POST'})
+        .then(r=>r.json()).then(d=>{
+            if(d.message) toast(d.message);
+            else toast(d.error||'失败','error');
+            loadTenants();
+        });
+}
+
+// ===== 添加租户 =====
+function showTenantModal(id) {
+    if (id) {
+        authFetch(API+'/tenants/'+id).then(r=>r.json()).then(d=>{
+            const t = d.tenant;
+            showModal('编辑租户', `
+                <div class="form-group"><label>公司名称</label><input id="tfCompany" value="${esc(t.company_name)}"></div>
+                <div class="form-group"><label>邮箱</label><input id="tfEmail" value="${esc(t.email||'')}"></div>
+                <div class="form-group"><label>新密码（留空则不修改）</label><input id="tfPass" type="password"></div>
+                <div class="form-group"><label>状态</label><select id="tfActive"><option value="1" ${t.is_active?'selected':''}>启用</option><option value="0" ${!t.is_active?'selected':''}>停用</option></select></div>
+                <button class="btn btn-primary" onclick="saveTenant(${id})">保存</button>
+            `);
+        });
+    } else {
+        showModal('添加租户', `
+            <p style="color:#999;font-size:12px;margin-bottom:12px">WhatsApp 号码将在租户扫码登录后自动获取，无需手动填写</p>
+            <div class="form-group"><label>公司名称 *</label><input id="tfCompany" placeholder="例如：ABC 科技有限公司"></div>
+            <div class="form-group"><label>用户名 *</label><input id="tfUser" placeholder="租户登录名"></div>
+            <div class="form-group"><label>密码 *</label><input id="tfPass" type="password"></div>
+            <div class="form-group"><label>邮箱（选填）</label><input id="tfEmail" placeholder="email@example.com"></div>
+            <button class="btn btn-primary" onclick="createTenant()">创建</button>
+        `);
+    }
+}
+
+function createTenant() {
+    const body = {
+        company_name: document.getElementById('tfCompany').value,
+        username: document.getElementById('tfUser').value,
+        password: document.getElementById('tfPass').value,
+        email: document.getElementById('tfEmail').value,
+    };
+    authFetch(API+'/tenants', {method:'POST',body:JSON.stringify(body)})
+        .then(r=>r.json()).then(d=>{
+            if(d.id){ toast('租户已创建。API Key: '+d.api_key); closeModal(); loadTenants(); }
+            else toast(d.error||'创建失败','error');
+        });
+}
+
+function saveTenant(id) {
+    const body = {
+        company_name: document.getElementById('tfCompany').value,
+        email: document.getElementById('tfEmail').value,
+        is_active: parseInt(document.getElementById('tfActive').value),
+    };
+    const pass = document.getElementById('tfPass').value;
+    if(pass) body.password = pass;
+    authFetch(API+'/tenants/'+id, {method:'PUT',body:JSON.stringify(body)})
+        .then(r=>r.json()).then(d=>{
+            if(d.message){ toast('已更新'); closeModal(); loadTenants(); }
+            else toast(d.error||'失败','error');
+        });
+}
+
+function deleteTenant(id) {
+    if(!confirm('确定删除此租户？将同时删除其容器和数据。')) return;
+    authFetch(API+'/tenants/'+id, {method:'DELETE'})
+        .then(r=>r.json()).then(d=>{
+            if(d.message){ toast('已删除'); loadTenants(); }
+            else toast(d.error||'失败','error');
+        });
+}
+
+function toggleContainer(id, action) {
+    authFetch(API+'/tenants/'+id+'/container/'+action, {method:'POST'})
+        .then(r=>r.json()).then(d=>{
+            if(d.message) toast(d.message);
+            else toast(d.error||'失败','error');
+            loadTenants();
+        });
+}
+
+function showTenantDetail(id) {
+    authFetch(API+'/tenants/'+id).then(r=>r.json()).then(d=>{
+        const t = d.tenant;
+        showModal('租户详情: '+esc(t.company_name), `
+            <p><b>ID:</b> ${t.id}</p>
+            <p><b>用户名:</b> ${esc(t.username)}</p>
+            <p><b>公司:</b> ${esc(t.company_name)}</p>
+            <p><b>邮箱:</b> ${t.email||'-'}</p>
+            <p><b>已绑 WA 号码:</b> ${t.waha_number||'-'}</p>
+            <p><b>容器名:</b> ${t.container_name||'-'}</p>
+            <p><b>WAHA 端口:</b> ${t.waha_port||'未分配'}</p>
+            <p><b>API Key:</b> <code>${t.api_key||'-'}</code></p>
+            <p><b>WA 状态:</b> ${waBadge(t)}</p>
+            <p><b>激活:</b> ${t.is_active?'是':'否'}</p>
+            <p><b>创建时间:</b> ${t.created_at}</p>
+            <div class="mt-12 gap-8">
+                <button class="btn btn-default" onclick="closeModal();showTenantModal(${t.id})">编辑</button>
+                <button class="btn btn-primary" onclick="closeModal();toggleContainer(${t.id},'start')">启动容器</button>
+                ${t.waha_status==='SCAN_QR_CODE'?`<button class="btn btn-success" onclick="closeModal();showQR(${t.id})">扫码连接</button>`:''}
+        </div>
+        `, 'modal-lg');
+    });
+}
+
+// ===== 服务器状态 =====
+function loadStatus() {
+    authFetch(API+'/status').then(r=>r.json()).then(data=>{
+        const s = data.system || {};
+        const cs = data.containers || [];
+        document.getElementById('mainContent').innerHTML = `
+            <h2 style="margin-bottom:16px">服务器状态</h2>
+            <div class="stats">
+                <div class="stat"><div class="label">内存 (已用/总量)</div><div class="value" style="font-size:18px">${s.memory_used_mb||0} / ${s.memory_total_mb||0} MB</div></div>
+                <div class="stat"><div class="label">磁盘 (已用: ${s.disk_usage_pct||'?'})</div><div class="value" style="font-size:18px">${s.disk_free||'?'} 可用</div></div>
+                <div class="stat"><div class="label">系统负载 (1分钟/5分钟/15分钟)</div><div class="value" style="font-size:16px">${s.load_1m||0} / ${s.load_5m||0} / ${s.load_15m||0}</div></div>
+                <div class="stat"><div class="label">${s.cpu_cores||1} 核 CPU · 负载率</div><div class="value" style="font-size:18px;color:${s.load_pct>80?'#ff4d4f':'#333'}">${s.load_pct||0}%</div></div>
+                <div class="stat"><div class="label">Xray 代理</div><div class="value" style="font-size:18px;color:${data.xray==='active'?'#52c41a':'#ff4d4f'}">${data.xray==='active'?'运行中':'已停止'}</div></div>
+            </div>
+            <div class="card">
+                <h2>Docker 容器 (${cs.length})</h2>
+                <table>
+                    <tr><th>名称</th><th>状态</th></tr>
+                    ${cs.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.status)}</td></tr>`).join('')||'<tr><td colspan="2">无</td></tr>'}
+                </table>
+            </div>
+        `;
+    });
+}
+
+// ===== 代理设置 =====
+function loadProxy() {
+    authFetch(API+'/proxy').then(r=>r.json()).then(data=>{
+        const p = data.proxy || {};
+        document.getElementById('mainContent').innerHTML = `
+            <h2 style="margin-bottom:16px">代理配置</h2>
+            <div class="card">
+                <div class="form-group"><label>代理主机</label><input id="pfHost" value="${esc(p.proxy_host||'')}"></div>
+                <div class="form-group"><label>代理端口</label><input id="pfPort" value="${esc(p.proxy_port||'')}"></div>
+                <div class="form-group"><label>UUID</label><input id="pfUUID" value="${esc(p.proxy_uuid||'')}"></div>
+                <div class="form-group"><label>网络类型</label><select id="pfNet"><option value="tcp" ${p.proxy_network==='tcp'?'selected':''}>TCP</option><option value="ws" ${p.proxy_network==='ws'?'selected':''}>WebSocket</option></select></div>
+                <div class="form-group"><label>WAHA 引擎</label><select id="pfEngine"><option value="NOWEB" ${p.waha_engine==='NOWEB'?'selected':''}>NOWEB (Baileys)</option><option value="WEBJS" ${p.waha_engine==='WEBJS'?'selected':''}>WEBJS (浏览器)</option></select></div>
+                <div class="form-group"><label>WAHA 内存限制 (MB)</label><input id="pfMem" type="number" value="${p.waha_memory_limit_mb||512}"></div>
+                <button class="btn btn-primary" onclick="saveProxy()">保存并应用</button>
+                <span style="color:#999;font-size:12px;margin-left:8px">仅对新创建的租户生效</span>
+            </div>
+        `;
+    });
+}
+
+function saveProxy() {
+    const body = {
+        proxy_host: document.getElementById('pfHost').value,
+        proxy_port: document.getElementById('pfPort').value,
+        proxy_uuid: document.getElementById('pfUUID').value,
+        proxy_network: document.getElementById('pfNet').value,
+        waha_engine: document.getElementById('pfEngine').value,
+        waha_memory_limit_mb: document.getElementById('pfMem').value,
+    };
+    authFetch(API+'/proxy', {method:'PUT',body:JSON.stringify(body)})
+        .then(r=>r.json()).then(d=>{
+            if(d.message) toast('代理配置已保存，Xray 已重启');
+            else toast(d.error||'失败','error');
+        });
+}
+
+// ===== 工具函数 =====
+function authFetch(url, opts={}, responseType='json') {
+    opts.headers = opts.headers || {};
+    opts.headers['Authorization'] = 'Bearer ' + token;
+    if (opts.body && typeof opts.body === 'string') {
+        opts.headers['Content-Type'] = 'application/json';
+    }
+    return fetch(url, opts).then(r => {
+        if (r.status === 401) { logout(); throw new Error('登录已过期'); }
+        return r;
+    });
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
+
+function toast(msg, type='success') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast toast-' + type;
+    setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+function showModal(title, body, cls) {
+    document.getElementById('mainContent').insertAdjacentHTML('beforeend',
+        `<div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+            <div class="modal ${cls||''}"><div class="flex-between"><h3>${title}</h3>
+            <button class="btn btn-default btn-sm" onclick="closeModal()">✕</button></div>${body}</div>
+        </div>`);
+}
+
+function closeModal() {
+    if (qrPolling) { clearInterval(qrPolling); qrPolling = null; }
+    const overlay = document.querySelector('.modal-overlay');
+    if(overlay) overlay.remove();
+}
+</script>
+</body>
+</html>

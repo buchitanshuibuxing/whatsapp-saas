@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16.2-alpine
+    environment:
+      POSTGRES_USER: whatsapp_user
+      POSTGRES_PASSWORD: whatsapp_pass_2026
+      POSTGRES_DB: whatsapp_saas
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - saas-network
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whatsapp_user -d whatsapp_saas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    networks:
+      - saas-network
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      DELETE: 1
+      NETWORKS: 1
+      IMAGES: 0
+      AUTH: 0
+      EXEC: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - saas-network
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.24-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/whatsapp-saas/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - saas-network
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+
+networks:
+  saas-network:
+    external: true
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,0 +1,29 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Database files (runtime data)
+*.db
+
+# Backup files
+*.bak
+*.pre-t3
+*.pre-*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Uploads (user-generated content)
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Docker volumes
+docker-data/

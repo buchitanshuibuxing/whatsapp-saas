@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhatsApp 外贸助手</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111b21;color:#e9edef;height:100vh;overflow:hidden}
+
+/* Login */
+.login-overlay{position:fixed;inset:0;background:#111b21;display:flex;align-items:center;justify-content:center;z-index:9999}
+.login-box{background:#202c33;padding:40px;border-radius:16px;width:380px;text-align:center}
+.login-box h1{font-size:22px;margin-bottom:4px;color:#00a884}
+.login-box .sub{font-size:13px;color:#8696a0;margin-bottom:24px}
+.login-box input{width:100%;padding:12px 16px;margin-bottom:12px;background:#2a3942;border:1px solid #374248;border-radius:10px;color:#e9edef;font-size:14px;outline:none}
+.login-box input:focus{border-color:#00a884}
+.login-box button{width:100%;padding:12px;background:#00a884;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
+.login-box button:hover{background:#00b894}
+.login-error{color:#e74c3c;font-size:13px;margin-top:8px;display:none}
+
+/* App Layout */
+.app{display:flex;height:100vh}
+.sidebar{width:64px;background:#202c33;display:flex;flex-direction:column;align-items:center;padding:12px 0;flex-shrink:0;border-right:1px solid #2a3942}
+.sidebar-avatar{width:40px;height:40px;border-radius:50%;background:#00a884;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;margin-bottom:16px;cursor:pointer;flex-shrink:0}
+.sidebar-nav{display:flex;flex-direction:column;gap:8px;flex:1;align-items:center}
+.nav-btn{width:48px;height:48px;border-radius:12px;border:none;background:transparent;color:#8696a0;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.nav-btn:hover{background:#2a3942;color:#e9edef}
+.nav-btn.active{background:#2a3942;color:#00a884}
+.logout-btn{margin-top:auto;margin-bottom:8px}
+
+/* Middle Panel */
+.middle-panel{width:340px;background:#111b21;border-right:1px solid #2a3942;display:flex;flex-direction:column;flex-shrink:0}
+.panel-header{padding:16px 20px;font-size:16px;font-weight:600;color:#e9edef;flex-shrink:0}
+.search-box{margin:0 12px 12px;padding:10px 16px;background:#202c33;border:none;border-radius:10px;color:#e9edef;font-size:13px;outline:none}
+.search-box:focus{background:#2a3942}
+.chat-list{flex:1;overflow-y:auto}
+.chat-item{display:flex;align-items:center;padding:14px 16px;cursor:pointer;border-bottom:1px solid #1f2c33;transition:background .1s;gap:12px}
+.chat-item:hover{background:#202c33}
+.chat-item.active{background:#2a3942}
+.chat-avatar{width:48px;height:48px;border-radius:50%;background:#2a3942;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#8696a0;flex-shrink:0}
+.chat-info{flex:1;min-width:0}
+.chat-name{font-size:15px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-preview{font-size:13px;color:#8696a0;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-time{font-size:11px;color:#8696a0;flex-shrink:0}
+.empty-state{text-align:center;color:#5a6a7a;padding:60px 20px;font-size:14px}
+
+/* Right Panel */
+.right-panel{flex:1;display:flex;flex-direction:column;background:#0b141a;min-width:0}
+
+/* Chat View */
+.chat-header{padding:14px 24px;background:#202c33;border-bottom:1px solid #2a3942;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.chat-header .avatar{width:40px;height:40px;border-radius:50%;background:#2a3942;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600}
+.chat-header .name{font-size:16px;font-weight:500;flex:1}
+.chat-header .translate-toggle{font-size:12px;padding:4px 12px;border-radius:14px;border:1px solid #374248;background:transparent;color:#8696a0;cursor:pointer;white-space:nowrap}
+.chat-header .translate-toggle.on{background:#00a884;color:#fff;border-color:#00a884}
+.chat-messages{flex:1;overflow-y:auto;padding:20px 60px;display:flex;flex-direction:column;gap:4px;background-image:url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="%230b141a"/></svg>')}
+.msg-wrapper{display:flex;flex-direction:column;max-width:70%}
+.msg-wrapper.out{align-self:flex-end;align-items:flex-end}
+.msg-wrapper.in{align-self:flex-start;align-items:flex-start}
+.msg-bubble{padding:8px 14px;border-radius:12px;font-size:14px;line-height:1.5;word-break:break-word;position:relative}
+.msg-wrapper.out .msg-bubble{background:#005c4b;color:#e9edef;border-top-right-radius:4px}
+.msg-wrapper.in .msg-bubble{background:#202c33;color:#e9edef;border-top-left-radius:4px}
+.msg-original{color:inherit}
+.msg-translated{margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.1);font-size:13px;opacity:.7;font-style:italic}
+.msg-translated .lang-tag{font-size:10px;opacity:.6;margin-right:4px}
+.msg-time{font-size:10px;color:#8696a0;margin-top:4px;padding:0 4px}
+.chat-input-area{padding:12px 24px;background:#202c33;border-top:1px solid #2a3942;flex-shrink:0}
+.translate-preview{background:#1a2a33;padding:8px 14px;border-radius:8px;margin-bottom:8px;display:none;font-size:13px;color:#00a884}
+.translate-preview .arrow{color:#8696a0;margin:0 6px}
+.translate-preview .preview-tag{display:inline-block;background:#005c4b;color:#00d4a0;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:600;vertical-align:middle;margin:0 2px;font-style:normal}
+.input-row{display:flex;gap:10px;align-items:flex-end}
+.chat-input-area textarea{flex:1;padding:10px 16px;background:#2a3942;border:none;border-radius:10px;color:#e9edef;font-size:14px;outline:none;resize:none;min-height:44px;max-height:120px;font-family:inherit;line-height:1.5}
+.chat-input-area textarea:focus{background:#2a3942}
+.send-btn{width:44px;height:44px;border-radius:50%;border:none;background:#00a884;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0}
+.send-btn:hover{background:#00b894}
+.send-btn:disabled{opacity:.4;cursor:default}
+
+/* Welcome screen */
+.welcome-screen{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#8696a0}
+.welcome-screen .icon{font-size:64px}
+.welcome-screen .text{font-size:16px}
+
+/* Right panel views (hidden by default) */
+.right-view{flex:1;display:flex;flex-direction:column;overflow-y:auto;padding:24px;display:none}
+.right-view.active{display:flex}
+.right-view h2{font-size:20px;margin-bottom:16px;color:#00a884}
+
+/* CRM View */
+.crm-stats{display:flex;gap:16px;margin-bottom:20px}
+.crm-stat{background:#202c33;padding:16px;border-radius:12px;flex:1;text-align:center}
+.crm-stat .num{font-size:24px;font-weight:700;color:#00a884}
+.crm-stat .label{font-size:12px;color:#8696a0;margin-top:4px}
+.crm-toolbar{display:flex;gap:12px;margin-bottom:16px;align-items:center}
+.crm-toolbar input,.crm-toolbar select{background:#202c33;border:1px solid #374248;border-radius:8px;padding:8px 14px;color:#e9edef;font-size:13px;outline:none}
+.crm-toolbar input{flex:1}
+.crm-toolbar button{padding:8px 18px;background:#00a884;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 12px;color:#8696a0;font-weight:500;border-bottom:1px solid #2a3942}
+td{padding:10px 12px;border-bottom:1px solid #1f2c33}
+td a{color:#00a884;text-decoration:none;cursor:pointer}
+td a:hover{color:#00b894}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;margin:1px 2px}
+.tag-active{background:#005c4b;color:#00d4a0}
+.tag-inactive{background:#2a3942;color:#8696a0}
+
+/* Settings View */
+.setting-group{margin-bottom:24px}
+.setting-group h3{font-size:15px;color:#00a884;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #2a3942}
+.setting-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #1f2c33}
+.setting-row .label{color:#e9edef;font-size:14px}
+.setting-row .desc{color:#8696a0;font-size:12px}
+.setting-row input[type="text"],.setting-row input[type="password"],.setting-row select{background:#2a3942;border:1px solid #374248;border-radius:6px;padding:6px 10px;color:#e9edef;font-size:13px;min-width:180px;outline:none}
+.setting-row input[type="range"]{width:120px}
+.setting-row textarea{width:100%;background:#2a3942;border:1px solid #374248;border-radius:6px;padding:8px;color:#e9edef;font-size:13px;outline:none;font-family:inherit;min-height:60px}
+.settings-save{display:flex;gap:12px;justify-content:flex-end;margin-top:16px}
+.settings-save button{padding:10px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px}
+.settings-save .save-btn{background:#00a884;color:#fff}
+.settings-save .test-btn{background:transparent;border:1px solid #374248;color:#8696a0}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:999}
+.modal-overlay.show{display:flex}
+.modal-box{background:#202c33;border-radius:16px;padding:28px;width:520px;max-width:90vw;max-height:80vh;overflow-y:auto}
+.modal-box h3{font-size:18px;margin-bottom:16px;color:#00a884}
+.modal-box .row{display:flex;gap:12px;margin-bottom:12px;align-items:center}
+.modal-box .row label{width:80px;color:#8696a0;font-size:13px;flex-shrink:0}
+.modal-box .row input,.modal-box .row select,.modal-box .row textarea{flex:1;background:#2a3942;border:1px solid #374248;border-radius:6px;padding:8px 12px;color:#e9edef;font-size:13px;outline:none}
+.modal-box .row textarea{min-height:60px;resize:vertical}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+.modal-actions button{padding:8px 20px;border:none;border-radius:8px;cursor:pointer;font-size:13px}
+.modal-actions .primary{background:#00a884;color:#fff}
+.modal-actions .secondary{background:#2a3942;color:#8696a0}
+
+/* QR Modal */
+.qr-img img{max-width:280px;border-radius:8px}
+
+/* Toast */
+.toast{position:fixed;top:24px;left:50%;transform:translateX(-50%);background:#00a884;color:#fff;padding:10px 24px;border-radius:8px;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.error{background:#e74c3c}
+
+/* WA Status in sidebar */
+.wa-status-badge{font-size:10px;margin-top:4px;text-align:center}
+.wa-status-badge .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:3px}
+.wa-status-badge .dot.connected{background:#00a884}
+.wa-status-badge .dot.qr{background:#f0a500}
+.wa-status-badge .dot.offline{background:#8696a0}
+</style>
+</head>
+<body>
+
+<!-- Login Overlay -->
+<div class="login-overlay" id="loginOverlay" style="display:flex">
+  <div class="login-box">
+    <h1>WhatsApp 外贸助手</h1>
+    <div class="sub">登录您的账户</div>
+    <input type="text" id="loginUser" placeholder="请输入用户名" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="请输入密码" autocomplete="current-password">
+    <button onclick="doLogin()">登 录</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div class="app" id="app" style="display:none">
+
+  <!-- Left Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-avatar" id="sidebarAvatar" onclick="switchView('settings')" title="账户设置">U</div>
+    <div class="wa-status-badge" id="waStatusBadge">
+      <span class="dot offline"></span><span id="waStatusMini">离线</span>
+    </div>
+    <div class="sidebar-nav">
+      <button class="nav-btn active" id="navChat" onclick="switchView('chat')" title="聊天">💬</button>
+      <button class="nav-btn" id="navCrm" onclick="switchView('crm')" title="客户管理">👥</button>
+      <button class="nav-btn" id="navTranslate" onclick="switchView('translate')" title="翻译设置">🌐</button>
+      <button class="nav-btn" id="navSettings" onclick="switchView('settings')" title="账户设置">⚙</button>
+      <button class="nav-btn" onclick="window.open('/tenant/quotation','_blank')" title="报价单">📄</button>
+    </div>
+    <button class="nav-btn logout-btn" onclick="doLogout()" title="退出登录">🚪</button>
+  </div>
+
+  <!-- Middle Panel -->
+  <div class="middle-panel" id="middlePanel">
+    <div class="panel-header">💬 消息</div>
+    <input type="text" class="search-box" id="chatSearch" placeholder="搜索或开始新对话..." onkeydown="if(event.key==='Enter')newChat()">
+    <div class="chat-list" id="chatList">
+      <div class="empty-state">暂无消息<br><br>在下方输入手机号开始新对话</div>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="right-panel" id="rightPanel">
+
+    <!-- Chat View -->
+    <div id="chatView" class="right-view active" style="display:flex;flex-direction:column;padding:0">
+      <div class="welcome-screen" id="welcomeScreen">
+        <div class="icon">💬</div>
+        <div class="text">WhatsApp 外贸助手</div>
+        <div style="font-size:13px;color:#5a6a7a">选择一个对话开始聊天</div>
+      </div>
+      <div id="chatWorkspace" style="display:none;flex:1;display:none;flex-direction:column">
+        <div class="chat-header">
+          <div class="avatar" id="chatContactAvatar">?</div>
+          <div class="name" id="chatContactName">选择对话</div>
+          <button class="translate-toggle on" id="chatTranslateToggle" onclick="toggleChatTranslate()">🌐 翻译中</button>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-area">
+          <div class="translate-preview" id="translatePreview">
+            <span id="translatePreviewText"></span>
+          </div>
+          <div class="input-row">
+            <textarea id="chatInput" rows="1" placeholder="输入消息..." onkeydown="handleInputKey(event)" oninput="autoResize(this);debounceTranslatePreview()"></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMsg()" disabled>➤</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CRM View -->
+    <div id="crmView" class="right-view">
+      <h2>👥 客户管理</h2>
+      <div class="crm-stats">
+        <div class="crm-stat"><div class="num" id="crmTotal">0</div><div class="label">总客户</div></div>
+        <div class="crm-stat"><div class="num" id="crmActive">0</div><div class="label">活跃</div></div>
+        <div class="crm-stat"><div class="num" id="crmNew">0</div><div class="label">新客户</div></div>
+      </div>
+      <div class="crm-toolbar">
+        <input type="text" id="crmSearch" placeholder="搜索客户...">
+        <select id="crmFilterTag"><option value="">全部标签</option></select>
+        <button onclick="openCustomerModal()">+ 添加客户</button>
+      </div>
+      <table>
+        <thead><tr><th>名称</th><th>WhatsApp</th><th>国家</th><th>标签</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="crmTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Translate Settings View -->
+    <div id="translateView" class="right-view">
+      <h2>🌐 翻译设置</h2>
+      <div class="setting-group">
+        <h3>📥 接收消息翻译</h3>
+        <div class="setting-row">
+          <div><div class="label">启用翻译</div><div class="desc">自动翻译收到的消息</div></div>
+          <label><input type="checkbox" id="receiveEnabled" checked onchange="showReceiveFields()"></label>
+        </div>
+        <div id="receiveFields">
+          <div class="setting-row">
+            <div><div class="label">目标语言</div></div>
+            <select id="receiveTargetLang"><option value="zh">中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="es">Español</option><option value="ar">العربية</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="ru">Русский</option><option value="pt">Português</option></select>
+          </div>
+          <div class="setting-row">
+            <div><div class="label">翻译引擎</div></div>
+            <select id="receiveEngine" onchange="showReceiveEngineFields()"><option value="google">Google 翻译</option><option value="baidu">百度翻译</option><option value="deepl">DeepL</option><option value="ai">AI 翻译</option></select>
+          </div>
+          <div class="setting-row" id="receiveBaiduKey" style="display:none"><div><div class="label">百度 API Key</div></div><input type="password" id="recBaiduApiKey" placeholder="AppID:SecretKey"></div>
+          <div class="setting-row" id="receiveDeepLKey" style="display:none"><div><div class="label">DeepL Key</div></div><input type="password" id="recDeeplApiKey" placeholder="Auth Key"></div>
+        </div>
+      </div>
+      <div class="setting-group">
+        <h3>📤 发送消息翻译</h3>
+        <div class="setting-row">
+          <div><div class="label">启用翻译</div><div class="desc">发送前自动翻译消息</div></div>
+          <label><input type="checkbox" id="sendEnabled" checked onchange="showSendFields()"></label>
+        </div>
+        <div id="sendFields">
+          <div class="setting-row">
+            <div><div class="label">目标语言</div></div>
+            <select id="sendTargetLang"><option value="zh">中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="es">Español</option><option value="ar">العربية</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="ru">Русский</option><option value="pt">Português</option></select>
+          </div>
+          <div class="setting-row">
+            <div><div class="label">翻译引擎</div></div>
+            <select id="sendEngine" onchange="showSendEngineFields()"><option value="google">Google 翻译</option><option value="baidu">百度翻译</option><option value="deepl">DeepL</option><option value="ai">AI 翻译</option></select>
+          </div>
+          <div class="setting-row" id="sendBaiduKey" style="display:none"><div><div class="label">百度 API Key</div></div><input type="password" id="sendBaiduApiKey" placeholder="AppID:SecretKey"></div>
+          <div class="setting-row" id="sendDeepLKey" style="display:none"><div><div class="label">DeepL Key</div></div><input type="password" id="sendDeeplApiKey" placeholder="Auth Key"></div>
+        </div>
+      </div>
+      <div class="setting-group">
+        <h3>🤖 AI 翻译设置</h3>
+        <div class="setting-row"><div><div class="label">AI 服务商</div></div><select id="llmProvider" onchange="showLlmEndpoint()"><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="custom">自定义</option></select></div>
+        <div class="setting-row"><div><div class="label">模型名称</div></div><input type="text" id="llmModel" placeholder="deepseek-chat"></div>
+        <div class="setting-row"><div><div class="label">API Key</div></div><input type="password" id="llmApiKey" placeholder="sk-..."></div>
+        <div class="setting-row" id="llmEndpointRow" style="display:none"><div><div class="label">API 端点</div></div><input type="text" id="llmApiEndpoint" placeholder="https://api.deepseek.com/v1"></div>
+        <div class="setting-row"><div><div class="label">System Prompt</div></div><textarea id="llmSystemPrompt">You are a professional translator. Translate the following text accurately.</textarea></div>
+        <div class="setting-row"><div><div class="label">Temperature</div></div><input type="range" min="0" max="1" step="0.1" id="llmTemperature" value="0.3" oninput="document.getElementById('llmTempVal').textContent=this.value"><span id="llmTempVal">0.3</span></div>
+        <div class="setting-row"><div><div class="label">Max Tokens</div></div><input type="number" id="llmMaxTokens" value="1024" min="100" max="4096"></div>
+      </div>
+      <div class="settings-save">
+        <button class="test-btn" onclick="testTranslation()">🧪 测试翻译</button>
+        <button class="save-btn" onclick="saveTranslateConfig()">💾 保存设置</button>
+      </div>
+    </div>
+
+    <!-- Settings View -->
+    <div id="settingsView" class="right-view">
+      <h2>⚙ 账户设置</h2>
+      <div class="setting-group">
+        <h3>账户信息</h3>
+        <div class="setting-row"><div class="label">用户名</div><div id="setUsername">--</div></div>
+        <div class="setting-row"><div class="label">公司</div><div id="setCompany">--</div></div>
+        <div class="setting-row"><div class="label">WhatsApp</div><div id="setWaPhone">未绑定</div></div>
+        <div class="setting-row"><div class="label">API Key</div><div id="setApiKey" style="font-size:12px;word-break:break-all">--</div></div>
+      </div>
+      <div class="setting-group">
+        <h3>WhatsApp 连接</h3>
+        <div class="setting-row"><div class="label">连接状态</div><div id="settingWaStatus">--</div></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="send-btn" style="width:auto;border-radius:8px;padding:8px 16px;font-size:13px" onclick="waSessionAction('start')">▶ 启动</button>
+          <button style="background:#2a3942;color:#8696a0;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer" onclick="waSessionAction('stop')">⏸ 停止</button>
+          <button style="background:#2a3942;color:#8696a0;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer" onclick="waSessionAction('restart')">🔄 重启</button>
+          <button style="background:#2a3942;color:#e74c3c;border:1px solid #e74c3c;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer" onclick="waSessionAction('logout')">🚫 登出</button>
+        </div>
+        <div id="qrCard" style="display:none;margin-top:16px;text-align:center">
+          <div style="color:#f0a500;margin-bottom:12px">📱 请扫描二维码</div>
+          <div class="qr-img" id="qrContainer"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Customer Modal -->
+<div class="modal-overlay" id="customerModal">
+  <div class="modal-box">
+    <h3 id="customerModalTitle">添加客户</h3>
+    <input type="hidden" id="customerEditId">
+    <div class="row"><label>WhatsApp JID</label><input id="custJid" placeholder="8613800138000@c.us"></div>
+    <div class="row"><label>显示名称</label><input id="custDisplayName" placeholder="客户名称"></div>
+    <div class="row"><label>手机号</label><input id="custPhone" placeholder="手机号"></div>
+    <div class="row"><label>邮箱</label><input id="custEmail" placeholder="邮箱"></div>
+    <div class="row"><label>国家</label><input id="custCountry" placeholder="国家代码"></div>
+    <div class="row"><label>标签</label><input id="custTags" placeholder="标签1,标签2"></div>
+    <div class="row"><label>状态</label><select id="custStatus"><option value="new">新客户</option><option value="active">活跃</option><option value="inactive">非活跃</option></select></div>
+    <div class="row"><label>备注</label><textarea id="custNotes" placeholder="备注信息"></textarea></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeCustomerModal()">取消</button>
+      <button class="primary" onclick="saveCustomer()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-box">
+    <h3 id="detailName">客户详情</h3>
+    <div id="detailContent"></div>
+    <div style="margin-top:16px">
+      <div style="color:#00a884;font-size:14px;margin-bottom:8px">📌 提醒</div>
+      <div id="detailReminders"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input id="reminderText" placeholder="添加提醒..." style="flex:1;padding:8px;background:#2a3942;border:1px solid #374248;border-radius:6px;color:#e9edef;font-size:13px">
+        <button style="padding:8px 16px;background:#00a884;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px" onclick="addReminder()">添加</button>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <div style="color:#00a884;font-size:14px;margin-bottom:8px">📋 交互记录</div>
+      <div id="detailTimeline"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeDetailModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="/tenant/app.js"></script>
+</body>
+</html>
