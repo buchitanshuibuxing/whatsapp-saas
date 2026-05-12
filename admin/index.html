@@ -348,7 +348,7 @@ select.fingerprint-select{padding:4px 8px;border:1px solid var(--border);border-
 <div class="page-title">服务器管理 <button class="btn btn-green btn-sm" style="margin-left:12px" onclick="showServerModal()">+ 添加服务器</button></div>
 <div class="panel">
 <h3>服务器列表</h3>
-<div class="table-wrap"><table id="serversTable"><thead><tr><th>ID</th><th>名称</th><th>地址</th><th>端口</th><th>角色</th><th>状态</th><th>内存</th><th>磁盘</th><th>心跳</th><th>操作</th></tr></thead><tbody></tbody></table></div>
+<div class="table-wrap"><table id="serversTable"><thead><tr><th>ID</th><th>名称</th><th>地址</th><th>端口</th><th>用户名</th><th>状态</th><th>内存</th><th>磁盘</th><th>心跳</th><th>操作</th></tr></thead><tbody></tbody></table></div>
 </div>
 
 <div class="panel" style="margin-top:16px">
@@ -372,7 +372,8 @@ select.fingerprint-select{padding:4px 8px;border:1px solid var(--border);border-
 <div class="form-group"><label>名称</label><input id="svrName" placeholder="生产服务器1"></div>
 <div class="form-group"><label>主机地址</label><input id="svrHost" placeholder="192.168.1.100"></div>
 <div class="form-group"><label>SSH端口</label><input id="svrPort" value="7022" type="number"></div>
-<div class="form-group"><label>角色</label><select id="svrRole"><option value="worker">Worker</option><option value="primary">Primary</option><option value="standby">Standby</option></select></div>
+<div class="form-group"><label>用户名</label><input id="svrUser" placeholder="zfb"></div>
+<div class="form-group"><label>密码</label><input id="svrPass" type="password" placeholder="SSH密码"></div>
 <input type="hidden" id="svrEditId">
 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
 <button class="btn btn-sm" onclick="closeServerModal()">取消</button>
@@ -1257,13 +1258,13 @@ function loadServers() {
     tbody.innerHTML = d.servers.map(function(s) {
       var statusCls = s.status === 'online' ? 'green' : (s.status === 'offline' ? 'red' : 'muted');
       return '<tr>' +
-        '<td>' + s.id + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.host) + '</td><td>' + s.port + '</td><td>' + esc(s.role) + '</td>' +
+        '<td>' + s.id + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.host) + '</td><td>' + s.port + '</td><td>' + esc(s.username || s.role) + '</td>' +
         '<td><span class="badge badge-' + statusCls + '">' + esc(s.status) + '</span></td>' +
         '<td>' + (s.memory_gb ? s.memory_gb + ' GB' : '-') + '</td><td>' + (s.disk_gb ? s.disk_gb + ' GB' : '-') + '</td>' +
         '<td style="font-size:12px">' + (s.last_heartbeat || '-') + '</td>' +
         '<td>' +
           '<button class="btn btn-blue btn-xs" onclick="healthCheck(' + s.id + ')" title="健康检查">🔍</button> ' +
-          '<button class="btn btn-xs" onclick="editServer(' + s.id + ',\'' + esc(s.name) + '\',\'' + esc(s.host) + '\',' + s.port + ',\'' + esc(s.role) + '\')">✏</button> ' +
+          '<button class="btn btn-xs" onclick="editServer(' + s.id + ',\'' + esc(s.name) + '\',\'' + esc(s.host) + '\',' + s.port + ',\'' + esc(s.username || s.role) + '\')">✏</button> ' +
           '<button class="btn btn-red btn-xs" onclick="deleteServer(' + s.id + ')">🗑</button>' +
         '</td></tr>';
     }).join('');
@@ -1283,18 +1284,20 @@ function showServerModal(id) {
     document.getElementById('svrName').value = '';
     document.getElementById('svrHost').value = '';
     document.getElementById('svrPort').value = '7022';
-    document.getElementById('svrRole').value = 'worker';
+    document.getElementById('svrUser').value = 'zfb';
+    document.getElementById('svrPass').value = '';
   }
 }
 function closeServerModal() { document.getElementById('serverModal').style.display = 'none'; }
-function editServer(id, name, host, port, role) {
+function editServer(id, name, host, port, username) {
   document.getElementById('serverModal').style.display = 'flex';
   document.getElementById('serverModalTitle').textContent = '编辑服务器';
   document.getElementById('svrEditId').value = id;
   document.getElementById('svrName').value = name;
   document.getElementById('svrHost').value = host;
   document.getElementById('svrPort').value = port;
-  document.getElementById('svrRole').value = role;
+  document.getElementById('svrUser').value = username || '';
+  document.getElementById('svrPass').value = '';
 }
 
 function saveServer() {
@@ -1303,9 +1306,11 @@ function saveServer() {
     name: document.getElementById('svrName').value.trim(),
     host: document.getElementById('svrHost').value.trim(),
     port: parseInt(document.getElementById('svrPort').value) || 7022,
-    role: document.getElementById('svrRole').value
+    username: document.getElementById('svrUser').value.trim(),
+    password: document.getElementById('svrPass').value
   };
   if (!data.name || !data.host) { toast('请填写名称和地址', 'error'); return; }
+  if (!data.username) { toast('请填写用户名', 'error'); return; }
   var method = id ? 'PUT' : 'POST';
   var path = id ? '/api/admin/servers/' + id : '/api/admin/servers';
   api(path, method, data).then(function(d) {

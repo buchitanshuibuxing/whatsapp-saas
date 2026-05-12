@@ -369,7 +369,8 @@ def init_db_v2():
         name TEXT NOT NULL,
         host TEXT NOT NULL,
         port INTEGER DEFAULT 7022,
-        role TEXT DEFAULT 'worker',
+        username TEXT DEFAULT 'zfb',
+        password TEXT DEFAULT '',
         status TEXT DEFAULT 'unknown',
         cpu_cores INTEGER,
         memory_gb REAL,
@@ -2203,10 +2204,10 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
         for r in rows:
             servers.append({
                 'id': r[0], 'name': r[1], 'host': r[2], 'port': r[3],
-                'role': r[4], 'status': r[5], 'cpu_cores': r[6],
-                'memory_gb': r[7], 'disk_gb': r[8], 'last_heartbeat': r[9],
-                'config': json.loads(r[10]) if r[10] else {},
-                'created_at': r[11], 'updated_at': r[12]
+                'username': r[4], 'status': r[6], 'cpu_cores': r[7],
+                'memory_gb': r[8], 'disk_gb': r[9], 'last_heartbeat': r[10],
+                'config': json.loads(r[11]) if r[11] else {},
+                'created_at': r[12], 'updated_at': r[13]
             })
         self.send_json(200, {'servers': servers})
 
@@ -2221,8 +2222,9 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             return
         db = self._get_db_h()
         cur = db.execute(
-            "INSERT INTO servers (name,host,port,role,config) VALUES (?,?,?,?,?)",
-            (name, host, data.get('port', 7022), data.get('role', 'worker'),
+            "INSERT INTO servers (name,host,port,username,password,config) VALUES (?,?,?,?,?,?)",
+            (name, host, data.get('port', 7022),
+             data.get('username', 'zfb'), data.get('password', ''),
              json.dumps(data.get('config', {}), ensure_ascii=False))
         )
         db.commit()
@@ -2239,10 +2241,10 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             return
         self.send_json(200, {
             'id': r[0], 'name': r[1], 'host': r[2], 'port': r[3],
-            'role': r[4], 'status': r[5], 'cpu_cores': r[6],
-            'memory_gb': r[7], 'disk_gb': r[8], 'last_heartbeat': r[9],
-            'config': json.loads(r[10]) if r[10] else {},
-            'created_at': r[11], 'updated_at': r[12]
+            'username': r[4], 'status': r[6], 'cpu_cores': r[7],
+            'memory_gb': r[8], 'disk_gb': r[9], 'last_heartbeat': r[10],
+            'config': json.loads(r[11]) if r[11] else {},
+            'created_at': r[12], 'updated_at': r[13]
         })
 
     def handle_admin_server_update(self, sid):
@@ -2256,7 +2258,7 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             return
         fields = []
         vals = []
-        for k in ['name', 'host', 'port', 'role', 'config']:
+        for k in ['name', 'host', 'port', 'username', 'password', 'config']:
             if k in data:
                 fields.append(k + "=?")
                 vals.append(json.dumps(data[k], ensure_ascii=False) if k == 'config' else data[k])
@@ -2289,16 +2291,22 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
         if not r:
             self.send_json(404, {'error': '服务器不存在'})
             return
-        host, port = r[2], r[3]
-        import subprocess, time
+        host, port, username, password = r[2], r[3], r[4], r[5]
+        import subprocess, time, tempfile, os as _os
+        # Create temp SSH password script with stored credentials
+        pf = tempfile.NamedTemporaryFile(mode='w', suffix='.sh', prefix='ssh_pass_', delete=False)
+        pf.write('#!/bin/bash\necho "' + password.replace("'", "'\\''") + '"\n')
+        pf.close()
+        _os.chmod(pf.name, 0o700)
+        ssh_env = {'SSH_ASKPASS': pf.name, 'DISPLAY': ':99', 'SSH_ASKPASS_REQUIRE': 'force'}
         start = time.time()
         try:
             result = subprocess.run(
                 ['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5',
-                 '-p', str(port), 'zfb@' + host,
+                 '-p', str(port), username + '@' + host,
                  'echo OK && free -m | grep Mem && df -h / | tail -1 && uptime'],
                 capture_output=True, text=True, timeout=15,
-                env={'SSH_ASKPASS': '/tmp/ssh_pass.sh', 'DISPLAY': ':99', 'SSH_ASKPASS_REQUIRE': 'force'}
+                env=ssh_env
             )
             latency = int((time.time() - start) * 1000)
             if result.returncode == 0 and 'OK' in (result.stdout or ''):
@@ -2332,6 +2340,9 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             db.execute("UPDATE servers SET status='offline',updated_at=datetime('now') WHERE id=?", (sid,))
             db.commit()
             self.send_json(200, {'ok': True, 'status': 'offline', 'error': str(e)[:200]})
+        finally:
+            try: _os.unlink(pf.name)
+            except: pass
 
     def handle_admin_server_migrate(self):
         """POST /api/admin/servers/migrate"""
@@ -2358,7 +2369,7 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
                  'zfb@' + src[2],
                  'cd /opt/whatsapp-saas && cp admin.db admin_backup_migrate.db && echo BACKUP_OK'],
                 capture_output=True, text=True, timeout=30,
-                env={'SSH_ASKPASS': '/tmp/ssh_pass.sh', 'DISPLAY': ':99', 'SSH_ASKPASS_REQUIRE': 'force'}
+                env=ssh_env
             )
             steps.append({'step': 'backup', 'ok': 'BACKUP_OK' in (result.stdout or '')})
             self.send_json(200, {
