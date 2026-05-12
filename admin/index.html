@@ -418,6 +418,13 @@ select.fingerprint-select{padding:4px 8px;border:1px solid var(--border);border-
 <h3>引擎参数</h3>
 <div id="baileysConfigForm" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:700px"></div>
 <div style="margin-top:16px"><button class="btn btn-green btn-sm" onclick="saveBaileysConfig()">保存配置</button> <span id="baileysSaveMsg" style="margin-left:12px;font-size:13px;color:var(--green)"></span></div>
+<div class="panel" style="margin-top:16px">
+<h3>📦 手动上传更新包</h3>
+<div class="desc" style="margin-bottom:12px">上传 .tar.gz 格式的 Baileys 引擎更新包（需包含 baileys-engine/ 目录，内含 Dockerfile、package.json、src/ 等）</div>
+<input type="file" id="baileysUpdateFile" accept=".tar.gz,.tgz" style="margin-right:8px">
+<button class="btn btn-green btn-sm" onclick="uploadBaileysUpdate()">⬆ 上传并更新</button>
+<div id="baileysUploadResult" style="margin-top:12px;font-size:13px"></div>
+</div>
 </div>
 </div>
 
@@ -431,7 +438,22 @@ select.fingerprint-select{padding:4px 8px;border:1px solid var(--border);border-
 <div class="panel" style="margin-top:16px">
 <h3>HA 配置</h3>
 <div id="haConfigForm" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:750px"></div>
-<div style="margin-top:16px"><button class="btn btn-green btn-sm" onclick="saveHaConfig()">保存配置</button> <span id="haSaveMsg" style="margin-left:12px;font-size:13px;color:var(--green)"></span></div>
+<div style="margin-top:16px"><button class="btn btn-green btn-sm" onclick="saveHaConfig()">保存配置</button> <span id="haSaveMsg" style="margin-left:12px;font-size:13px;color:var(--green)"></span>
+<div class="panel" style="margin-top:16px">
+<h3>🚀 一键部署到备用服务器</h3>
+<div class="desc" style="margin-bottom:12px">填写备用服务器的 SSH 信息，自动部署整个 WhatsApp SaaS 项目并启用双活</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:600px">
+<div><label style="font-size:12px;color:var(--muted)">服务器地址</label><input id="standbyHost" placeholder="192.168.1.100" style="width:100%"></div>
+<div><label style="font-size:12px;color:var(--muted)">SSH 端口</label><input id="standbyPort" type="number" value="22" style="width:100%"></div>
+<div><label style="font-size:12px;color:var(--muted)">SSH 用户名</label><input id="standbyUser" placeholder="root" style="width:100%"></div>
+<div><label style="font-size:12px;color:var(--muted)">SSH 密码</label><input id="standbyPass" type="password" placeholder="输入密码" style="width:100%"></div>
+</div>
+<div style="margin-top:16px">
+<button class="btn btn-green" onclick="deployStandby()">🚀 一键部署</button>
+<span id="deployStatus" style="margin-left:12px;font-size:13px"></span>
+</div>
+</div>
+</div>
 </div>
 </div>
 </main>
@@ -1460,6 +1482,68 @@ function updateBaileys() {
   toast('正在更新（可能需要1-2分钟）...');
   api('/api/admin/baileys/update', 'POST').then(function(d) {
     toast(d.ok ? '引擎已更新' : '更新失败: ' + (d.error||''));
+  });
+}
+
+// ===== Baileys 手动上传更新 =====
+function uploadBaileysUpdate() {
+  var fileInput = document.getElementById('baileysUpdateFile');
+  var file = fileInput.files[0];
+  if (!file) { toast('请先选择更新包文件', 'error'); return; }
+  if (!file.name.endsWith('.tar.gz') && !file.name.endsWith('.tgz')) { toast('仅支持 .tar.gz 格式', 'error'); return; }
+  if (!confirm('确认上传并更新 Baileys 引擎？当前引擎将被替换，所有会话将中断。')) return;
+  toast('正在上传更新包...');
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var b64 = e.target.result.split(',')[1];
+    toast('上传完成，正在部署（可能需要2-3分钟）...', null, 5000);
+    api('/api/admin/baileys/upload-update', 'POST', {data: b64, filename: file.name}).then(function(d) {
+      var resultEl = document.getElementById('baileysUploadResult');
+      if (d.error) {
+        resultEl.innerHTML = '<span style="color:var(--red)">❌ ' + esc(d.error) + '</span>';
+        toast(d.error, 'error');
+        return;
+      }
+      if (d.ok) {
+        resultEl.innerHTML = '<span style="color:var(--green)">✅ 更新成功！文件: ' + (d.files||[]).slice(0,5).join(', ') + '</span>';
+        toast('引擎已更新并重启');
+      } else {
+        resultEl.innerHTML = '<span style="color:var(--red)">❌ 更新失败：' + esc(d.build_output||'') + '</span>' +
+          (d.backup ? '<br><span style="font-size:12px">备份已保存至: ' + esc(d.backup) + '</span>' : '');
+        toast('更新失败', 'error');
+      }
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+// ===== HA 一键部署 =====
+function deployStandby() {
+  var host = document.getElementById('standbyHost').value.trim();
+  var port = parseInt(document.getElementById('standbyPort').value) || 22;
+  var user = document.getElementById('standbyUser').value.trim();
+  var pass = document.getElementById('standbyPass').value;
+  if (!host || !user || !pass) { toast('请填写完整的服务器信息', 'error'); return; }
+  if (!confirm('确认部署到 ' + user + '@' + host + ':' + port + ' ？\n\n将自动安装Docker、上传项目文件并启动所有服务。')) return;
+  var statusEl = document.getElementById('deployStatus');
+  statusEl.innerHTML = '<span style="color:var(--blue)">⏳ 正在打包项目并部署到 ' + esc(host) + '（可能需要5-10分钟）...</span>';
+  toast('正在部署...', null, 10000);
+  api('/api/admin/ha/deploy-standby', 'POST', {
+    host: host, port: port, username: user, password: pass
+  }).then(function(d) {
+    if (d.error) {
+      statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + esc(d.error) + '</span>';
+      toast(d.error, 'error');
+      return;
+    }
+    if (d.ok) {
+      statusEl.innerHTML = '<span style="color:var(--green)">✅ 部署成功！备用服务器 ' + esc(d.host) + ' 已就绪</span>';
+      toast('备用服务器部署完成');
+      loadHaConfig();
+    } else {
+      statusEl.innerHTML = '<span style="color:var(--red)">❌ 部署失败</span><br><pre style="font-size:11px;max-height:200px;overflow:auto">' + esc(d.output||'') + '</pre>';
+      toast('部署失败，请查看详情', 'error');
+    }
   });
 }
 

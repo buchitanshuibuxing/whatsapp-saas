@@ -2480,6 +2480,68 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json(500, {'error': str(e)[:200]})
 
+    def handle_admin_baileys_upload_update(self):
+        require_auth(self)
+        data = self.read_body()
+        b64_data = (data.get("data") or "").strip()
+        if not b64_data:
+            self.send_json(400, {"error": "no data"})
+            return
+        import base64 as _b64, tempfile, tarfile, os, subprocess, time as _time
+        db = self._get_db_h()
+        try:
+            raw = _b64.b64decode(b64_data)
+        except:
+            self.send_json(400, {"error": "bad base64"})
+            return
+        tmp_path = "/tmp/baileys-update.tar.gz"
+        with open(tmp_path, "wb") as f:
+            f.write(raw)
+        try:
+            with tarfile.open(tmp_path, "r:gz") as tf:
+                names = tf.getnames()[:20]
+        except Exception as e:
+            self.send_json(400, {"error": "not tar.gz: " + str(e)[:100]})
+            return
+        backup_dir = "/opt/whatsapp-saas/baileys-engine.bak." + str(int(_time.time()))
+        try:
+            subprocess.run(["cp", "-r", "/opt/whatsapp-saas/baileys-engine", backup_dir], timeout=10)
+        except:
+            pass
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with tarfile.open(tmp_path, "r:gz") as tf:
+                tf.extractall(tmpdir)
+            src_dirs = [d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d))]
+            src_dir = os.path.join(tmpdir, "baileys-engine")
+            if "baileys-engine" not in src_dirs:
+                for d in src_dirs:
+                    if "baileys" in d.lower() or "engine" in d.lower():
+                        src_dir = os.path.join(tmpdir, d)
+                        break
+                else:
+                    if src_dirs:
+                        src_dir = os.path.join(tmpdir, src_dirs[0])
+            subprocess.run(["rm", "-rf", "/opt/whatsapp-saas/baileys-engine"], timeout=10)
+            subprocess.run(["cp", "-r", src_dir, "/opt/whatsapp-saas/baileys-engine"], timeout=10)
+        build = subprocess.run(
+            ["docker", "build", "-t", "baileys-engine:latest", "."],
+            capture_output=True, text=True, timeout=300,
+            cwd="/opt/whatsapp-saas/baileys-engine"
+        )
+        restart = subprocess.run(
+            ["docker", "compose", "-f", "/opt/whatsapp-saas/docker-compose.yml", "up", "-d", "baileys-engine"],
+            capture_output=True, text=True, timeout=60,
+            cwd="/opt/whatsapp-saas"
+        )
+        ok = build.returncode == 0 and restart.returncode == 0
+        audit_log(db, "admin", "Baileys engine upload update " + ("OK" if ok else "FAILED"))
+        self.send_json(200, {
+            "ok": ok,
+            "files": names[:10],
+            "backup": None if ok else backup_dir,
+            "build_output": (build.stdout or build.stderr or "")[:500]
+        })
+
     # ================================================================
     # 双活配置 (HA / Dual-Active)
     # ================================================================
@@ -2586,6 +2648,45 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             'ok': True,
             'message': '故障切换已触发。当前服务器将降级为备用，备用服务器将升级为主用。'
         })
+
+    def handle_admin_ha_deploy_standby(self):
+        require_auth(self)
+        data = self.read_body()
+        host = (data.get("host") or "").strip()
+        port = data.get("port", 22)
+        username = (data.get("username") or "").strip()
+        password = (data.get("password") or "").strip()
+        if not host or not username or not password:
+            self.send_json(400, {"error": "missing server info"})
+            return
+        import subprocess, base64 as _b64
+        db = self._get_db_h()
+        audit_log(db, "admin", "HA deploy started to " + host)
+        db.execute(
+            "INSERT OR REPLACE INTO ha_config (config_key, config_value) "
+            "VALUES ('standby_host',?),('standby_port',?),('standby_user',?),('deployed_at',datetime('now'))",
+            (host, str(port), username))
+        db.commit()
+        pkg_path = "/tmp/whatsapp-saas-deploy.tar.gz"
+        subprocess.run(["tar","czf",pkg_path,"--exclude",".git","--exclude","*.bak","--exclude","*.pyc",
+            "--exclude","__pycache__","--exclude","admin.db","--exclude","data/baileys",
+            "--exclude","node_modules","-C","/opt","whatsapp-saas"], timeout=60)
+        with open(pkg_path, "rb") as f:
+            pkg_b64 = _b64.b64encode(f.read()).decode()
+        dscript = "#!/bin/bash\nset -e\nif ! command -v docker &>/dev/null; then curl -fsSL https://get.docker.com | bash 2>&1; fi\ncat /tmp/pkg_b64.txt | base64 -d > /tmp/wsaas.tar.gz\nmkdir -p /opt/whatsapp-saas && cd /opt/whatsapp-saas\ntar xzf /tmp/wsaas.tar.gz\ndocker-compose up -d 2>/dev/null || docker compose up -d\necho DEPLOY_OK\n"
+        chunk_size = 40000
+        chunks = [pkg_b64[i:i+chunk_size] for i in range(0, len(pkg_b64), chunk_size)]
+        ssh_base = ["sshpass","-p",password,"ssh","-o","StrictHostKeyChecking=no","-p",str(port),f"{username}@{host}"]
+        ds_b64 = _b64.b64encode(dscript.encode()).decode()
+        subprocess.run(ssh_base + [f"echo {ds_b64} | base64 -d > /tmp/deploy.sh && chmod +x /tmp/deploy.sh"], timeout=30)
+        for i, chunk in enumerate(chunks):
+            op = ">" if i == 0 else ">>"
+            subprocess.run(ssh_base + [f"echo {chunk} {op} /tmp/pkg_b64.txt"], timeout=30)
+        result = subprocess.run(ssh_base + ["bash /tmp/deploy.sh"], capture_output=True, text=True, timeout=600)
+        ok = "DEPLOY_OK" in (result.stdout or "")
+        audit_log(db, "admin", f"HA deploy to {host}: {'OK' if ok else 'FAILED'}")
+        self.send_json(200, {"ok": ok, "host": host, "output": (result.stdout or result.stderr or "")[:500]})
+
     def handle_admin_ai_test(self):
         """测试 AI 大模型连接"""
         require_auth(self)
@@ -2814,8 +2915,12 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             self.handle_admin_baileys_restart()
         elif path == '/api/admin/baileys/update':
             self.handle_admin_baileys_update()
+        elif path == '/api/admin/baileys/upload-update':
+            self.handle_admin_baileys_upload_update()
         elif path == '/api/admin/ha/failover':
             self.handle_admin_ha_failover()
+        elif path == '/api/admin/ha/deploy-standby':
+            self.handle_admin_ha_deploy_standby()
         elif path == '/api/admin/servers/migrate':
             self.handle_admin_server_migrate()
         elif path.startswith('/api/admin/servers/') and path.endswith('/health'):
