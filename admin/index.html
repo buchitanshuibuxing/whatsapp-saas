@@ -863,9 +863,9 @@ function refreshHealth(){
         if(!ok) extra = '<button class="hc-fix-btn" id="xrayFixBtn" onclick="fixXray()">🔧 一键修复</button><div id="xrayFixResult" style="margin-top:6px"></div>';
         
         h += '<div class="health-card '+cls+'" id="xrayCard"><div class="hc-name">'+it.icon+' '+it.name+'</div>'+
-          '<div><span class="badge '+(ok?'badge-green':'badge-red')+'\">'+(ok?'正常':'异常')+'</span> '+detail+'</div>'+
+          '<div><span class="badge '+(ok?'badge-green':'badge-red')+'">'+(ok?'正常':'异常')+'</span> '+detail+'</div>'+
           diag + extra + '</div>';
-        continue;
+        return;
       } else if(it.key==='baileys_engine'){
         detail = ok?'正常运行':('异常: '+v.detail);
         if(!ok) suggestion = 'Baileys 引擎未运行。cd /opt/whatsapp-saas && docker-compose up -d baileys-engine';
