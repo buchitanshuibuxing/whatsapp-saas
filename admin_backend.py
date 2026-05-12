@@ -1644,11 +1644,94 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
     def handle_admin_health(self):
         require_auth(self)
         checks = {}
+        # --- Xray 代理全面诊断 (4层) ---
+        xd = {'status':'ok', 'diagnosis':{}}
+        # 1. 进程状态
         try:
-            urllib.request.urlopen('http://127.0.0.1:10809', timeout=3)
-            checks['xray'] = {'status':'ok','detail':'SOCKS5:10808 / HTTP:10809 正常'}
+            r = subprocess.run(['systemctl','is-active','xray'], capture_output=True, text=True, timeout=5)
+            xd['process'] = r.stdout.strip()
+        except:
+            xd['process'] = 'unknown'
+        # 2. 端口监听
+        try:
+            r = subprocess.run(['ss','-tln'], capture_output=True, text=True, timeout=5)
+            xd['ports'] = {'socks5_10808': ':10808' in r.stdout, 'http_10809': ':10809' in r.stdout}
+        except:
+            xd['ports'] = {'socks5_10808': False, 'http_10809': False}
+        # 3. 配置读取
+        try:
+            with open('/usr/local/etc/xray/config.json') as f:
+                cfg = json.load(f)
+            outbounds = cfg.get('outbounds', [])
+            proxy_out = next((o for o in outbounds if o.get('tag') == 'proxy'), None)
+            if proxy_out:
+                vnext = proxy_out.get('settings',{}).get('vnext',[{}])[0]
+                xd['config'] = {
+                    'protocol': proxy_out.get('protocol','unknown'),
+                    'upstream': f"{vnext.get('address','?')}:{vnext.get('port','?')}",
+                    'network': proxy_out.get('streamSettings',{}).get('network','tcp')
+                }
+            else:
+                xd['config'] = {'upstream': '未配置', 'protocol': 'unknown'}
         except Exception as e:
-            checks['xray'] = {'status':'error','detail':str(e)[:80],'cause':'Xray代理未运行或端口不可达','fix':'sudo systemctl restart xray; 检查: /usr/local/etc/xray/config.json'}
+            xd['config'] = {'upstream': f'读取失败: {str(e)[:60]}', 'protocol': 'unknown'}
+        # 4. 代理连通性测试 (SOCKS5 -> google.com)
+        if xd.get('ports',{}).get('socks5_10808'):
+            try:
+                import socket as _skt, struct as _st
+                sk = _skt.socket(_skt.AF_INET, _skt.SOCK_STREAM)
+                sk.settimeout(10)
+                sk.connect(('127.0.0.1', 10808))
+                sk.send(b'\x05\x01\x00')
+                resp = sk.recv(2)
+                if resp == b'\x05\x00':
+                    host = b'www.google.com'
+                    sk.send(b'\x05\x01\x00\x03' + bytes([len(host)]) + host + _st.pack('>H', 443))
+                    resp = sk.recv(10)
+                    if resp[1] == 0:
+                        t0 = time.time()
+                        ctx = ssl.create_default_context()
+                        ssk = ctx.wrap_socket(sk, server_hostname='www.google.com')
+                        ssk.send(b'GET / HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n')
+                        ssk.recv(1024)
+                        latency = round((time.time()-t0)*1000)
+                        xd['connectivity'] = {'reachable': True, 'latency_ms': latency, 'target': 'google.com:443'}
+                        ssk.close()
+                    else:
+                        xd['connectivity'] = {'reachable': False, 'error': f'SOCKS5远程连接被拒绝(code={resp[1]})'}
+                        sk.close()
+                else:
+                    xd['connectivity'] = {'reachable': False, 'error': 'SOCKS5握手失败'}
+                    sk.close()
+            except Exception as e:
+                xd['connectivity'] = {'reachable': False, 'error': str(e)[:100]}
+        else:
+            xd['connectivity'] = {'reachable': False, 'error': 'SOCKS5端口(10808)未监听'}
+        # 综合判定
+        proc_ok = xd.get('process') == 'active'
+        ports_ok = all(xd.get('ports',{}).values())
+        conn_ok = xd.get('connectivity',{}).get('reachable', False)
+        upstream = xd.get('config',{}).get('upstream', '?')
+        latency = xd.get('connectivity',{}).get('latency_ms', '?')
+        if proc_ok and ports_ok and conn_ok:
+            xd['status'] = 'ok'
+            xd['detail'] = f'正常 | 上游: {upstream} | 延迟: {latency}ms'
+        elif proc_ok and ports_ok:
+            xd['status'] = 'error'
+            xd['detail'] = f'代理不通 | 上游: {upstream}'
+            xd['cause'] = '上游节点不可达或vmess配置过期'
+            xd['fix'] = '更新 /usr/local/etc/xray/config.json 的 upstream 配置后重启'
+        elif proc_ok:
+            xd['status'] = 'error'
+            xd['detail'] = '端口未监听'
+            xd['cause'] = 'Xray配置inbounds端口绑定失败'
+            xd['fix'] = '检查 config.json inbounds，确认10808/10809未被占用'
+        else:
+            xd['status'] = 'error'
+            xd['detail'] = '进程未运行'
+            xd['cause'] = 'Xray服务已停止或崩溃'
+            xd['fix'] = '执行 sudo systemctl restart xray'
+        checks['xray'] = xd
         try:
             req = urllib.request.Request('http://127.0.0.1:3500/api/health')
             urllib.request.urlopen(req, timeout=3)
@@ -1684,6 +1767,81 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
         all_good = all(c.get('status')=='ok' for c in checks.values() if isinstance(c,dict) and 'status' in c)
         checks['overall'] = 'healthy' if all_good else 'degraded'
         self.send_json(200, checks)
+
+    def handle_admin_health_xray_fix(self):
+        """POST /api/admin/health/xray/fix — 一键修复 Xray 代理"""
+        require_auth(self)
+        steps = []
+        # Step 1: 检查进程
+        try:
+            r = subprocess.run(['systemctl','is-active','xray'], capture_output=True, text=True, timeout=5)
+            was_active = r.stdout.strip() == 'active'
+            steps.append({'step':'进程检查','status':'ok','detail':f'Xray {"运行中" if was_active else "已停止"}'})
+        except Exception as e:
+            was_active = False
+            steps.append({'step':'进程检查','status':'warning','detail':str(e)[:60]})
+        # Step 2: 重启 Xray
+        try:
+            subprocess.run("echo 'zfb0411!' | sudo -S systemctl restart xray", shell=True, capture_output=True, text=True, timeout=20)
+            time.sleep(2)
+            r2 = subprocess.run(['systemctl','is-active','xray'], capture_output=True, text=True, timeout=5)
+            if r2.stdout.strip() == 'active':
+                steps.append({'step':'重启服务','status':'ok','detail':'Xray 已重启成功 ✅'})
+            else:
+                steps.append({'step':'重启服务','status':'error','detail':f'重启失败，当前状态: {r2.stdout.strip()}'})
+        except Exception as e:
+            steps.append({'step':'重启服务','status':'error','detail':str(e)[:80]})
+        # Step 3: 验证端口
+        try:
+            r = subprocess.run(['ss','-tln'], capture_output=True, text=True, timeout=5)
+            p10808 = ':10808' in r.stdout
+            p10809 = ':10809' in r.stdout
+            if p10808 and p10809:
+                steps.append({'step':'端口验证','status':'ok','detail':'SOCKS5:10808 ✅ HTTP:10809 ✅'})
+            else:
+                m = []; 
+                if not p10808: m.append('10808')
+                if not p10809: m.append('10809')
+                steps.append({'step':'端口验证','status':'error','detail':f'端口未监听: {",".join(m)}'})
+        except Exception as e:
+            steps.append({'step':'端口验证','status':'error','detail':str(e)[:80]})
+        # Step 4: 测试代理连通性
+        ports_ok = any(s.get('status')=='ok' and '端口' in s.get('step','') for s in steps)
+        if ports_ok:
+            try:
+                import socket as _sk, struct as _st
+                sk = _sk.socket(_sk.AF_INET, _sk.SOCK_STREAM)
+                sk.settimeout(12)
+                sk.connect(('127.0.0.1', 10808))
+                sk.send(b'\x05\x01\x00')
+                resp = sk.recv(2)
+                if resp == b'\x05\x00':
+                    host = b'www.google.com'
+                    sk.send(b'\x05\x01\x00\x03' + bytes([len(host)]) + host + _st.pack('>H', 443))
+                    resp = sk.recv(10)
+                    if resp[1] == 0:
+                        t0 = time.time()
+                        ctx = ssl.create_default_context()
+                        ssk = ctx.wrap_socket(sk, server_hostname='www.google.com')
+                        ssk.send(b'GET / HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n')
+                        ssk.recv(1024)
+                        latency = round((time.time()-t0)*1000)
+                        steps.append({'step':'连通性测试','status':'ok','detail':f'google.com 可达 ✅ 延迟 {latency}ms'})
+                        ssk.close()
+                    else:
+                        steps.append({'step':'连通性测试','status':'error','detail':f'远程连接被拒绝(code={resp[1]})，上游节点可能失效'})
+                        sk.close()
+                else:
+                    steps.append({'step':'连通性测试','status':'error','detail':'SOCKS5握手失败'})
+                    sk.close()
+            except Exception as e:
+                steps.append({'step':'连通性测试','status':'error','detail':str(e)[:80]})
+        all_ok = all(s['status'] == 'ok' for s in steps)
+        self.send_json(200, {
+            'overall': 'healthy' if all_ok else 'degraded',
+            'steps': steps,
+            'message': '🎉 Xray 修复成功！所有检查通过' if all_ok else '⚠️ Xray 修复部分完成，请查看详情'
+        })
 
     def handle_admin_audit(self):
         require_auth(self)
@@ -2993,6 +3151,8 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             self.handle_admin_ha_failover()
         elif path == '/api/admin/ha/deploy-standby':
             self.handle_admin_ha_deploy_standby()
+        elif path == '/api/admin/health/xray/fix':
+            self.handle_admin_health_xray_fix()
         elif path == '/api/admin/servers/migrate':
             self.handle_admin_server_migrate()
         elif path.startswith('/api/admin/servers/') and path.endswith('/health'):

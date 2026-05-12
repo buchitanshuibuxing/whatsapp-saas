@@ -99,6 +99,18 @@ button:hover{opacity:.85}
 .health-card .hc-suggestion:before{content:'🔧 修复：'}
 .health-card.ok{border-left:3px solid var(--green)}
 .health-card.err{border-left:3px solid var(--red)}
+.hc-diag{font-size:11px;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;display:none}
+.hc-diag.show{display:block}
+.hc-diag-row{display:flex;justify-content:space-between;padding:2px 0;color:var(--muted)}
+.hc-fix-btn{margin-top:8px;padding:6px 14px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:4px;cursor:pointer}
+.hc-fix-btn:hover{opacity:.85}
+.hc-fix-btn:disabled{opacity:.5;cursor:not-allowed}
+.hc-fix-step{padding:3px 0;font-size:11px;display:flex;align-items:center;gap:6px}
+.hc-fix-step .d-ok{color:var(--green)}
+.hc-fix-step .d-err{color:var(--red)}
+.hc-toggle-diag{font-size:11px;color:var(--blue);cursor:pointer;margin-left:8px}
+@keyframes hc-spin{to{transform:rotate(360deg)}}
+.hc-spinner{width:10px;height:10px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:hc-spin .6s linear infinite;display:inline-block}
 
 .toast{position:fixed;top:16px;right:16px;z-index:200;padding:12px 20px;border-radius:var(--radius);font-size:13px;font-weight:600;animation:slideIn .3s ease;display:none}
 .toast.success{background:var(--green);color:#fff}
@@ -826,8 +838,34 @@ function refreshHealth(){
         detail = (v.containers||0)+' 个容器运行中';
         if(!ok) suggestion = 'Docker 未运行。sudo systemctl start docker; sudo systemctl enable docker';
       } else if(it.key==='xray'){
-        detail = ok?'正常运行':('异常: '+v.detail);
-        if(!ok) suggestion = 'Xray 代理不可用。sudo systemctl restart xray; 检查 /usr/local/etc/xray/config.json';
+        var conn = v.connectivity||{}, cfg = v.config||{}, ports = v.ports||{};
+        // 诊断详情 HTML
+        var diagId = 'xrayDiag';
+        var diag = '<div class="hc-diag" id="'+diagId+'">';
+        var row = function(label,val,isOk){ return '<div class="hc-diag-row"><span>'+label+'</span><span style="color:'+(isOk?'var(--green)':'var(--red)')+'">'+val+'</span></div>'; };
+        diag += row('进程状态', (v.process==='active'?'运行中 ✅':'已停止 ❌'), v.process==='active');
+        diag += row('SOCKS5 :10808', (ports.socks5_10808?'监听中 ✅':'未监听 ❌'), ports.socks5_10808);
+        diag += row('HTTP :10809', (ports.http_10809?'监听中 ✅':'未监听 ❌'), ports.http_10809);
+        diag += row('上游节点', (cfg.upstream||'?')+' ('+(cfg.protocol||'?')+')', true);
+        var connOk = conn.reachable;
+        diag += row('连通性', connOk?('✅ '+conn.target+' <b>'+conn.latency_ms+'ms</b>'):('❌ '+(conn.error||'超时')), connOk);
+        diag += '</div>';
+        
+        detail = ok?'正常运行':v.detail;
+        var extra = '';
+        if(ok){
+          detail += ' <span class="hc-toggle-diag" onclick="var e=document.getElementById(\''+diagId+'\');var t=this;e.classList.toggle(\'show\');t.textContent=e.classList.contains(\'show\')?\'收起 ▲\':\'查看详情 ▸\'">查看详情 ▸</span>';
+        } else {
+          // 异常时自动展开 + 修复按钮
+          diag = diag.replace('class="hc-diag"','class="hc-diag show"');
+        }
+        if(v.cause) diag += '<div style="font-size:11px;color:var(--red);margin-top:4px">⚠️ '+v.cause+'</div>';
+        if(!ok) extra = '<button class="hc-fix-btn" id="xrayFixBtn" onclick="fixXray()">🔧 一键修复</button><div id="xrayFixResult" style="margin-top:6px"></div>';
+        
+        h += '<div class="health-card '+cls+'" id="xrayCard"><div class="hc-name">'+it.icon+' '+it.name+'</div>'+
+          '<div><span class="badge '+(ok?'badge-green':'badge-red')+'\">'+(ok?'正常':'异常')+'</span> '+detail+'</div>'+
+          diag + extra + '</div>';
+        continue;
       } else if(it.key==='baileys_engine'){
         detail = ok?'正常运行':('异常: '+v.detail);
         if(!ok) suggestion = 'Baileys 引擎未运行。cd /opt/whatsapp-saas && docker-compose up -d baileys-engine';
@@ -840,6 +878,34 @@ function refreshHealth(){
       '<div><span class="badge '+(d.overall==='healthy'?'badge-green':'badge-red')+'">'+d.overall+'</span></div></div>';
     document.getElementById('healthGrid').innerHTML = h;
   }).catch(function(){ document.getElementById('healthGrid').innerHTML = '<div class="loading">加载失败</div>'; });
+}
+
+function fixXray(){
+  var btn = document.getElementById('xrayFixBtn');
+  var result = document.getElementById('xrayFixResult');
+  if(!btn||!result) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ 修复中...';
+  result.innerHTML = '<div class="hc-fix-step"><span class="hc-spinner"></span> 正在诊断并修复 Xray 代理...</div>';
+  api('/api/admin/health/xray/fix', 'POST').then(function(d){
+    var steps = d.steps||[];
+    var html = '';
+    steps.forEach(function(s){
+      var cls = s.status==='ok'?'d-ok':'d-err';
+      var icon = s.status==='ok'?'✅':'❌';
+      html += '<div class="hc-fix-step"><span class="'+cls+'">'+icon+' '+s.step+'</span>: '+s.detail+'</div>';
+    });
+    html += '<div style="margin-top:6px;font-weight:600;color:'+(d.overall==='healthy'?'var(--green)':'var(--red)')+'">'+d.message+'</div>';
+    result.innerHTML = html;
+    btn.disabled = false;
+    btn.textContent = '🔄 重新修复';
+    // 3秒后自动刷新健康状态
+    setTimeout(function(){ refreshHealth(); }, 3000);
+  }).catch(function(e){
+    result.innerHTML = '<div style="color:var(--red);font-size:11px">修复请求失败: '+e+'</div>';
+    btn.disabled = false;
+    btn.textContent = '🔧 一键修复';
+  });
 }
 
 // ===== ALERTS =====
