@@ -2073,14 +2073,39 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
     def handle_admin_services(self):
         require_auth(self)
         services = []
-        labels = {'xray':'Xray 代理','wa-admin':'管理后台','nginx':'Nginx','docker':'Docker'}
-        for svc in ['xray','wa-admin','nginx','docker']:
+        labels = {'xray':'Xray 代理','wa-admin':'管理后台','docker':'Docker'}
+        # Systemd services (excluding nginx — it runs in Docker)
+        for svc in ['xray','wa-admin','docker']:
             try:
                 r = subprocess.run(['systemctl','is-active',svc],capture_output=True,text=True,timeout=5)
                 status = r.stdout.strip()
             except:
                 status = 'unknown'
             services.append({'name':svc,'display':labels.get(svc,svc),'status':status,'actions':['restart'],'pid':''})
+        # Nginx — runs in Docker, not systemd
+        try:
+            r = subprocess.run(['docker','inspect','whatsapp-saas-nginx-1','--format','{{.State.Status}}|{{.State.StartedAt}}'],
+                capture_output=True,text=True,timeout=5)
+            out = r.stdout.strip()
+            if out and '|' in out:
+                st, started = out.split('|',1)
+                ngx_status = 'running' if st == 'running' else st
+                # Also verify it actually serves traffic
+                try:
+                    resp = urllib.request.urlopen('http://127.0.0.1:80/admin/', timeout=3)
+                    http_ok = resp.status < 400
+                except:
+                    http_ok = False
+                detail = f'Nginx 容器 {ngx_status}, HTTP {"可达" if http_ok else "不可达"}'
+                services.append({'name':'nginx','display':'Nginx (Docker)','status':ngx_status,
+                    'detail':detail,'actions':['restart'],'pid':f'Docker, 启动于 {started[:19]}'})
+            else:
+                services.append({'name':'nginx','display':'Nginx (Docker)','status':'stopped',
+                    'detail':'Docker 容器未运行','actions':['restart'],'pid':''})
+        except Exception as e:
+            services.append({'name':'nginx','display':'Nginx (Docker)','status':'error',
+                'detail':str(e)[:60],'actions':['restart'],'pid':''})
+        # Other Docker containers
         try:
             r = subprocess.run(['docker','ps','--format','{{.Names}}\t{{.Status}}'],capture_output=True,text=True,timeout=5)
             for line in r.stdout.strip().split('\n'):
@@ -2097,6 +2122,20 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
         require_auth(self)
         if action not in ('restart','stop','start'):
             self.send_json(400, {'error':'Invalid action'})
+            return
+        # Nginx runs in Docker — use docker commands
+        if svc_name == 'nginx':
+            try:
+                import os
+                cmd_map = {'restart':'restart','stop':'stop','start':'start'}
+                docker_cmd = ['docker', cmd_map[action], 'whatsapp-saas-nginx-1']
+                r = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=15)
+                audit_log(self._get_db_h(), 'admin', 'Nginx Docker: %s (exit=%d)' % (action, r.returncode))
+                ok = r.returncode == 0
+                self.send_json(200, {'ok': ok, 'output': r.stdout + r.stderr,
+                    'message': f'Nginx Docker {action} {"成功" if ok else "失败"}'})
+            except Exception as e:
+                self.send_json(500, {'error': str(e)})
             return
         try:
             cmd = ['sudo','-S','systemctl',action,svc_name]
