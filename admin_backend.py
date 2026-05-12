@@ -2570,6 +2570,11 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             'db_sync_peer': '',
             'db_sync_port': 7022,
             'notification_webhook': '',
+            'domain': '',
+            'dns_provider': 'manual',
+            'dns_api_key': '',
+            'dns_zone_id': '',
+            'standby_password': '',
         }
         for k, v in defaults.items():
             if k not in cfg:
@@ -2603,12 +2608,18 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
         cfg = {r[0]: r[1] for r in cfg_rows}
         import socket
         status = {
-            'enabled': cfg.get('enabled', 'false') == 'true',
+            'enabled': cfg.get('enabled', 'false') in ('true', '1'),
             'mode': cfg.get('mode', 'hot_standby'),
             'primary_online': False,
             'standby_online': False,
             'last_sync': None,
             'role': 'standalone',
+            'session_count': 0,
+            'creds_count': 0,
+            'sync_active': False,
+            'failover_count': 0,
+            'last_failover': None,
+            'baileys_running': False,
         }
         primary = cfg.get('primary_host', '')
         if primary:
@@ -2630,13 +2641,56 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
                 status['standby_online'] = True
             except:
                 pass
+        # Check local WhatsApp sessions
+        import os as _os, json as _json
+        sessions_file = _os.path.join('/opt/whatsapp-saas', 'data', 'baileys', 'sessions.json')
+        if _os.path.exists(sessions_file):
+            try:
+                with open(sessions_file) as f:
+                    sessions = _json.load(f)
+                status['session_count'] = len(sessions)
+            except:
+                pass
+        creds_root = _os.path.join('/opt/whatsapp-saas', 'data', 'baileys')
+        if _os.path.exists(creds_root):
+            for root, dirs, files in _os.walk(creds_root):
+                status['creds_count'] += files.count('creds.json')
+        sync_hb = '/tmp/session_sync_heartbeat'
+        if _os.path.exists(sync_hb):
+            try:
+                with open(sync_hb) as f:
+                    last = float(f.read().strip())
+                if __import__('time').time() - last < 30:
+                    status['sync_active'] = True
+                    status['last_sync'] = __import__('time').strftime('%Y-%m-%d %H:%M:%S', __import__('time').localtime(last))
+            except:
+                pass
+        fo_state_file = '/tmp/failover_state.json'
+        if _os.path.exists(fo_state_file):
+            try:
+                with open(fo_state_file) as f:
+                    fo_state = _json.load(f)
+                status['failover_count'] = fo_state.get('failover_count', 0)
+                status['last_failover'] = fo_state.get('last_failover')
+            except:
+                pass
+        try:
+            import subprocess as _sp
+            result = _sp.run(
+                ['docker', 'inspect', '-f', '{{.State.Status}}', 'baileys-engine'],
+                capture_output=True, text=True, timeout=5
+            )
+            status['baileys_running'] = 'running' in (result.stdout or '')
+        except:
+            pass
         if status['enabled']:
-            if status['primary_online'] and status['standby_online']:
-                status['role'] = 'primary'
-            elif status['primary_online']:
+            if status['primary_online']:
                 status['role'] = 'primary'
             elif status['standby_online']:
                 status['role'] = 'standby'
+        else:
+            if status['baileys_running']:
+                status['role'] = 'primary'
         self.send_json(200, status)
 
     def handle_admin_ha_failover(self):
@@ -2686,6 +2740,22 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
         ok = "DEPLOY_OK" in (result.stdout or "")
         audit_log(db, "admin", f"HA deploy to {host}: {'OK' if ok else 'FAILED'}")
         self.send_json(200, {"ok": ok, "host": host, "output": (result.stdout or result.stderr or "")[:500]})
+
+    def handle_client_discovery(self):
+        """GET /api/client/discovery — Returns primary and standby URLs"""
+        db = self._get_db_h()
+        rows = db.execute("SELECT config_key, config_value FROM ha_config").fetchall()
+        cfg = {r[0]: r[1] for r in rows}
+        enabled = cfg.get('enabled', 'false') in ('true', '1')
+        primary = cfg.get('primary_host', '') or 'nas.xiazhou.top'
+        standby = cfg.get('standby_host', '')
+        result = {
+            'primary_url': f'http://{primary}:7080',
+            'standby_url': f'http://{standby}:7080' if standby else None,
+            'ha_enabled': enabled,
+            'mode': cfg.get('mode', 'hot_standby'),
+        }
+        self.send_json(200, result)
 
     def handle_admin_ai_test(self):
         """测试 AI 大模型连接"""
@@ -2792,6 +2862,8 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
             self.handle_admin_dashboard()
         elif path == '/api/admin/sessions':
             self.handle_admin_sessions()
+        elif path == '/api/client/discovery':
+            self.handle_client_discovery()
         elif path == '/api/admin/health':
             self.handle_admin_health()
         elif path == '/api/admin/audit':

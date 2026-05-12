@@ -433,7 +433,10 @@ select.fingerprint-select{padding:4px 8px;border:1px solid var(--border);border-
 <div class="page-title">双活 / 高可用配置 <button class="btn btn-red btn-sm" style="margin-left:12px" onclick="triggerFailover()">⚠ 手动故障切换</button></div>
 <div class="panel">
 <h3>HA 状态</h3>
-<div id="haStatus" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:12px 0"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0">
+<div class="panel"><h3>📡 服务状态</h3><div id="haStatus" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div></div>
+<div class="panel"><h3>📊 实时同步</h3><div id="haSyncStatus" style="font-size:13px;line-height:1.8"></div></div>
+</div>
 </div>
 <div class="panel" style="margin-top:16px">
 <h3>HA 配置</h3>
@@ -1555,9 +1558,11 @@ function loadHaConfig() {
     var fields = [
       {key:'enabled',label:'启用双活',type:'checkbox'},
       {key:'mode',label:'模式',type:'select',options:['hot_standby','active_active']},
-      {key:'primary_host',label:'主服务器地址',type:'text'},
-      {key:'standby_host',label:'备用服务器地址',type:'text'},
-      {key:'sync_method',label:'同步方式',type:'select',options:['sqlite_replication','rsync','nfs']},
+      {key:'domain',label:'域名（DNS切换）',type:'text'},
+      {key:'dns_provider',label:'DNS 提供商',type:'select',options:['manual','cloudflare','aliyun','tencent']},
+      {key:'primary_host',label:'主服务器 IP',type:'text'},
+      {key:'standby_host',label:'备用服务器 IP',type:'text'},
+      {key:'standby_password',label:'备用 SSH 密码',type:'password'},
       {key:'sync_interval_seconds',label:'同步间隔(秒)',type:'number'},
       {key:'auto_failover',label:'自动故障切换',type:'checkbox'},
       {key:'failover_timeout_seconds',label:'故障切换超时(秒)',type:'number'},
@@ -1579,16 +1584,24 @@ function loadHaConfig() {
     var statusEl = document.getElementById('haStatus');
     var roleCls = d.role === 'primary' ? 'green' : (d.role === 'standby' ? 'blue' : 'muted');
     statusEl.innerHTML =
-      '<div class="card"><b>双活状态</b><div>' + (d.enabled ? '<span style="color:var(--green)">已启用</span>' : '<span style="color:var(--muted)">未启用</span>') + '</div></div>' +
-      '<div class="card"><b>当前角色</b><div><span class="badge badge-' + roleCls + '">' + esc(d.role) + '</span></div></div>' +
-      '<div class="card"><b>模式</b><div>' + esc(d.mode) + '</div></div>' +
-      '<div class="card"><b>主服务器</b><div>' + (d.primary_online ? '<span style="color:var(--green)">在线</span>' : '<span style="color:var(--red)">离线</span>') + '</div></div>' +
-      '<div class="card"><b>备用服务器</b><div>' + (d.standby_online ? '<span style="color:var(--green)">在线</span>' : '<span style="color:var(--red)">离线</span>') + '</div></div>';
+      '<div><b>双活状态</b><div>' + (d.enabled ? '<span style="color:var(--green)">已启用</span>' : '<span style="color:var(--muted)">未启用</span>') + '</div></div>' +
+      '<div><b>当前角色</b><div><span class="badge badge-' + roleCls + '">' + esc(d.role) + '</span></div></div>' +
+      '<div><b>主服务器</b><div>' + (d.primary_online ? '<span style="color:var(--green)">在线</span>' : '<span style="color:var(--red)">离线</span>') + '</div></div>' +
+      '<div><b>备用服务器</b><div>' + (d.standby_online ? '<span style="color:var(--green)">在线</span>' : '<span style="color:var(--red)">离线</span>') + '</div></div>';
+    var syncEl = document.getElementById('haSyncStatus');
+    syncEl.innerHTML =
+      '<div>WhatsApp 会话: <b>' + (d.session_count || 0) + '</b> 个</div>' +
+      '<div>凭据文件: <b>' + (d.creds_count || 0) + '</b> 个</div>' +
+      '<div>实时同步: ' + (d.sync_active ? '<span style="color:var(--green)">运行中</span>' : '<span style="color:var(--muted)">未启动</span>') + '</div>' +
+      '<div>上次同步: ' + (d.last_sync || '无') + '</div>' +
+      '<div>Baileys 引擎: ' + (d.baileys_running ? '<span style="color:var(--green)">运行中</span>' : '<span style="color:var(--red)">已停止</span>') + '</div>' +
+      '<div>故障切换次数: <b>' + (d.failover_count || 0) + '</b></div>' +
+      '<div>上次切换: ' + (d.last_failover || '无') + '</div>';
   });
 }
 
 function saveHaConfig() {
-  var fields = ['enabled','mode','primary_host','standby_host','sync_method','sync_interval_seconds','auto_failover','failover_timeout_seconds','health_check_interval'];
+  var fields = ['enabled','mode','domain','dns_provider','primary_host','standby_host','standby_password','sync_interval_seconds','auto_failover','failover_timeout_seconds','health_check_interval'];
   var data = {};
   fields.forEach(function(k) {
     var el = document.getElementById('ha_' + k);

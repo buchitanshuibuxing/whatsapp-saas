@@ -15,11 +15,34 @@ var state = {
   translateTimer: null
 };
 
+// ====== HA Discovery ======
+var HA_STANDBY = null;
+var HA_FAILED_OVER = false;
+
+function loadDiscovery() {
+  fetch(API.replace('/api/tenant', '/api/client/discovery'))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.standby_url) {
+        HA_STANDBY = d.standby_url;
+        localStorage.setItem('wa_standby_url', d.standby_url);
+        if (d.ha_enabled) {
+          console.log('[HA] Standby configured:', d.standby_url, 'mode:', d.mode);
+        }
+      }
+    })
+    .catch(function() {});
+  // Also try cached standby
+  var cached = localStorage.getItem('wa_standby_url');
+  if (cached) HA_STANDBY = cached;
+}
+
 // ====== Init ======
 function init() {
   if (state.token) {
     document.getElementById('loginOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
+    loadDiscovery();
     loadMe();
   } else {
     document.getElementById('loginOverlay').style.display = 'flex';
@@ -68,6 +91,7 @@ function doLogin() {
     state.token = data.token || data.access_token;
     localStorage.setItem('wa_token', state.token);
     hideLogin();
+    loadDiscovery();
     loadMe();
   }).catch(function(e) { err.textContent = '网络错误'; err.style.display = 'block'; });
 }
@@ -82,27 +106,54 @@ function doLogout() {
   showLogin();
 }
 
-// ====== API ======
+// ====== API with Auto-Failover ======
+function _tryFetch(url, opts) {
+  return fetch(url, opts).then(function(r) {
+    return r.json().catch(function() { return {}; });
+  });
+}
+
 function api(path, opts) {
   opts = opts || {};
   var headers = opts.headers || {};
   if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
   headers['Content-Type'] = headers['Content-Type'] || 'application/json';
-  return fetch(API + path, {
-    method: opts.method || 'GET',
-    headers: headers,
-    body: opts.body
-  }).then(function(r) { return r.json().catch(function() { return {}; }); });
+  var fetchOpts = { method: opts.method || 'GET', headers: headers, body: opts.body };
+  
+  // Try primary first
+  return _tryFetch(API + path, fetchOpts).catch(function(err) {
+    // If primary fails and we have a standby, try standby
+    if (HA_STANDBY && !HA_FAILED_OVER) {
+      console.warn('[HA] Primary failed, trying standby:', HA_STANDBY);
+      // Swap API to standby
+      var standbyApi = HA_STANDBY + '/api/tenant';
+      return _tryFetch(standbyApi + path, fetchOpts).then(function(data) {
+        // If standby works, mark as failed over
+        if (!data.error) {
+          HA_FAILED_OVER = true;
+          API = standbyApi;
+          localStorage.setItem('wa_api_url', standbyApi);
+          console.log('[HA] Successfully failed over to standby');
+        }
+        return data;
+      });
+    }
+    // If standby also fails or not configured, return error
+    return { error: '服务器不可用，请检查网络连接' };
+  });
 }
 
 function apiRaw(path, opts) {
   opts = opts || {};
   var headers = opts.headers || {};
   if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
-  return fetch(API + path, {
-    method: opts.method || 'GET',
-    headers: headers,
-    body: opts.body
+  var fetchOpts = { method: opts.method || 'GET', headers: headers, body: opts.body };
+  return fetch(API + path, fetchOpts).catch(function() {
+    if (HA_STANDBY && !HA_FAILED_OVER) {
+      var standbyApi = HA_STANDBY + '/api/tenant';
+      return fetch(standbyApi + path, fetchOpts);
+    }
+    return Promise.reject(new Error('Network error'));
   });
 }
 
